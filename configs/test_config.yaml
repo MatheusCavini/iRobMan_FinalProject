@@ -1,0 +1,30 @@
+world_settings:
+  gravity: -9.8
+  timestep_freq: 240
+  mode: 1 # 0: no gui(headless), 1: with gui, show static camera, 2: with gui, show end-effector camera
+  default_obj_pos: [0.0, -0.65, 1.40]
+  default_goal_pos: [0.65, 0.8, 1.24]
+  base_urdf: plane.urdf
+  background_urdf: plane_transparent.urdf
+  turn_on_obstacles: true  # toggle for turning obstacles on and off
+  camera:
+    width: 640  # image width.
+    height: 480  # image height.
+    fov: 70.0  # camera field of view
+    near: 0.01  # camera near clipping plane
+    far: 5.0  # camera far clipping plane
+    cam_render_flag: true  # toggles cam output in pybullet GUI
+    stat_cam_pos: [1.5, 0, 3.0]  # static camera position
+    stat_cam_target_pos: [0, 0, 0.7] # static camera target position
+    ee_cam_offset: [0.0, 0.0, 0.1]  # ee camera offset
+    ee_cam_orientation: [0.0, 0.0, 0.0, 1.0]  # ee camera orientation
+
+robot_settings:
+  urdf: franka_panda/panda.urdf
+  table_scaling: 2
+  arm_idx: [0, 1, 2, 3, 4, 5, 6]
+  default_arm: [-1.2, 0.058, 0.31, -2.24, -0.30, 2.66, 2.32, 0.02, 0.02]
+  default_init_pos: [0, 0, 0.62]  # robot base position
+  default_init_ori: [0, 0, 0]  # robot base orientation
+  gripper_idx: [9, 10]
+  ee_idx: 11
