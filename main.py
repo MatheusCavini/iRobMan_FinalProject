@@ -1,6 +1,7 @@
 import os
 import glob
 import yaml
+import pybullet as p
 
 import numpy as np
 
@@ -36,8 +37,19 @@ def run_exp(config: Dict[str, Any]):
             ee_pos, ee_ori = sim.robot.get_ee_pose()
             print(f"Robot End Effector Position: {ee_pos}")
             print(f"Robot End Effector Orientation: {ee_ori}")
+
+            ###[MC: 2025-02-09] Test of Jacobian IK-Controller ###
+            target_position = [ 0, -0.47003696, 1.8] #moves in axis -X and +Z from default initial position...
+            target_orientation = [-0.4499506, 0.87065586, -0.19751983, -0.02210788] #...keeping default initial rotation in quaternion
+            robot = sim.get_robot()
+
             for i in range(10000):
+                print(p.isNumpyEnabled())
                 sim.step()
+                
+                robot.move_to_pose(target_position, target_orientation)
+
+
                 # for getting renders
                 # rgb, depth, seg = sim.get_ee_renders()
                 # rgb, depth, seg = sim.get_static_renders()

@@ -99,3 +99,64 @@ class Robot:
             controlMode=p.POSITION_CONTROL,
             targetPositions=target_positions,
         )
+
+    
+
+    ###[MC: 2025-02-09] Implement Jacobian IK-Controller for robot ###
+    ###########################################################
+    def compute_pose_error(self, target_pos, current_pos, target_ori, current_ori):
+        position_error = np.array(target_pos) - np.array(current_pos)
+        orientation_error_quat = p.getDifferenceQuaternion(target_ori, current_ori)
+        orientation_error = 2 * np.array(orientation_error_quat[:3])  # Extract vector part
+       
+        return np.hstack((position_error, orientation_error))
+
+
+    def IK_solver(self, target_pos, target_ori):
+        #Calculate the error DeltaP between the current and desired end effector pose
+        current_ee_pos, current_ee_ori = self.get_ee_pose()
+        joint_positions = self.get_joint_positions()
+        joint_velocities = self.get_joint_velocites()
+        error = self.compute_pose_error(target_pos, current_ee_pos, target_ori, current_ee_ori)
+
+        #If position error is small enough, stop updating joint positions
+        if np.linalg.norm(error[:3]) < 0.05:
+            error[0:3]=[0,0,0]
+            if np.linalg.norm(error[4:]) <0.1:
+                return joint_positions
+            
+
+        #Calculate the Jacobian
+        zeros = np.zeros(len(joint_positions))
+        jacobian_linear, jacobian_angular = p.calculateJacobian(
+            self.id, 
+            self.ee_idx,
+            localPosition=[0, 0, 0], 
+            objPositions=joint_positions.tolist()+[0,0],   
+            objVelocities=joint_velocities.tolist()+[0,0], 
+            objAccelerations=zeros.tolist()+[0,0]
+        )
+        jacobian = np.vstack((jacobian_linear, jacobian_angular))[:, :7]
+
+        #Calculate the pseudo-inverse of the Jacobian
+        damping = 0.1
+        identity = np.eye(jacobian.shape[1])
+        jacobian_pseudo_inv = np.linalg.pinv(jacobian)
+
+        step = max(0.1, 2*np.linalg.norm(error[:3]))
+        #Calculate joint_increment DeltaTheta
+        delta_theta = step*jacobian_pseudo_inv @ error
+
+        #Update the joint positions
+        joint_positions += delta_theta
+
+        return joint_positions
+    
+
+
+    def move_to_pose(self, target_pos, target_ori):
+        joint_postions = self.IK_solver(target_pos, target_ori)
+        self.position_control(joint_postions)
+
+###################################################################################
+
