@@ -12,6 +12,7 @@ from pybullet_object_models import ycb_objects  # type:ignore
 from src.simulation import Simulation
 
 
+
 def run_exp(config: Dict[str, Any]):
     # Example Experiment Runner File
     print("Simulation Start:")
@@ -44,15 +45,19 @@ def run_exp(config: Dict[str, Any]):
             robot = sim.get_robot()
 
             for i in range(10000):
-                print(p.isNumpyEnabled())
                 sim.step()
                 
                 robot.move_to_pose(target_position, target_orientation)
+                
 
 
                 # for getting renders
-                # rgb, depth, seg = sim.get_ee_renders()
-                # rgb, depth, seg = sim.get_static_renders()
+                #[MC:2025-02-10] PERFORMANCE: change render FPS
+                if i%10 == 0: #Only get renders every 10 steps (240/10 = 24fps on image processing)
+                    #rgb, depth, seg = sim.get_ee_renders()
+                    rgb, depth, seg = sim.get_static_renders()
+                
+
                 obs_position_guess = np.zeros((2, 3))
                 print((f"[{i}] Obstacle Position-Diff: "
                        f"{sim.check_obstacle_position(obs_position_guess)}"))

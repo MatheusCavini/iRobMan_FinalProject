@@ -143,9 +143,9 @@ class Robot:
         identity = np.eye(jacobian.shape[1])
         jacobian_pseudo_inv = np.linalg.pinv(jacobian)
 
-        step = max(0.1, 2*np.linalg.norm(error[:3]))
+        step = min(0.1, 2*np.linalg.norm(error[:3]))
         #Calculate joint_increment DeltaTheta
-        delta_theta = step*jacobian_pseudo_inv @ error
+        delta_theta = 0.15*jacobian_pseudo_inv @ error
 
         #Update the joint positions
         joint_positions += delta_theta

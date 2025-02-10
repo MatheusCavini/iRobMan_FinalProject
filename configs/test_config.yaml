@@ -13,7 +13,7 @@ world_settings:
     fov: 70.0  # camera field of view
     near: 0.01  # camera near clipping plane
     far: 5.0  # camera far clipping plane
-    cam_render_flag: true  # toggles cam output in pybullet GUI
+    cam_render_flag: false  # toggles cam output in pybullet GUI #[MC:2025-02-10] PERFORMANCE: disable image render every step
     stat_cam_pos: [1.5, 0, 3.0]  # static camera position
     stat_cam_target_pos: [0, 0, 0.7] # static camera target position
     ee_cam_offset: [0.0, 0.0, 0.1]  # ee camera offset

@@ -31,7 +31,7 @@ class Simulation:
         self.timestep = 1.0 / sim_settings["timestep_freq"]
         self.mode = sim_settings["mode"]
         self.gui_mode = p.GUI if sim_settings["mode"] > 0 else p.DIRECT
-        self.render_mode = p.ER_TINY_RENDERER
+        self.render_mode = p.ER_BULLET_HARDWARE_OPENGL  #[MC:2025-02-10] PERFORMANCE: change render mode (previous: p.ER_TINY_RENDERER)
         self.target_object = spawn_object
         self.rng = np.random.RandomState(seed)
 
@@ -176,7 +176,8 @@ class Simulation:
             width=self.width, height=self.height,
             viewMatrix=view_matrix,
             projectionMatrix=self.projection_matrix,
-            renderer=self.render_mode)
+            renderer=self.render_mode,
+            shadow=0) #[MC:2025-02-10] PERFORMANCE: Disable shadow rendering 
 
         return pb_image_to_numpy(rgb, depth, seg, self.width, self.height)
 
@@ -188,7 +189,8 @@ class Simulation:
             width=self.width, height=self.height,
             viewMatrix=self.stat_viewMat,
             projectionMatrix=self.projection_matrix,
-            renderer=self.render_mode)
+            renderer=self.render_mode,
+            shadow=0) #[MC:2025-02-10] PERFORMANCE: Disable shadow rendering
 
         return pb_image_to_numpy(rgb, depth, seg, self.width, self.height)
 
@@ -206,7 +208,7 @@ class Simulation:
                     collided_flag = True
                     break
                 obstacle.move()
-
+    
         if self.cam_render_flag:
             if self.mode == 1:
                 self.get_static_renders()
