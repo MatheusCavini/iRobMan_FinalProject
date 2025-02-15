@@ -1,124 +1,101 @@
-# Intelligent Robotic Manipulation
+# Intelligent Robotic Manipulation (WiSe 2024/25) - Final Project
 
-The overall Goal of the project is to grasp a YCB-Object and place it in a goal basket while avoiding obstacles. To do
-this we have provided some helpful tips/information on various subtasks that you may or may not need to solve. Perception (task 1) to detect the graspable object, Controller (task 2) to move your robot arm, sample and execute a grasp (task 3), localize and track obstacles (task 4) and plan the trajectory to place the object in the goal, while avoiding the obstacles (task 5). Note that, what we mention in the task subparts are just for guidance and you are fully free to choose whatever you want to use to accomplish the full task. But you need to make sure that you don't use privilege information from the sim in the process.
+### Student 1: Daniel Bellardi Kerzner - XXXXXX
+### Student 2: Matheus Latorre Cavini - 2261960 
 
-We highly recommend you go through the [Pybullet Documentation](https://pybullet.org/wordpress/index.php/forum-2/)
 
-Make sure you have [anaconda](https://www.anaconda.com/) or [miniconda](https://docs.conda.io/projects/miniconda/en/latest/miniconda-install.html) installed beforehand.
+## Brief Introduction to the Project
 
-```shell
-git clone https://github.com/iROSA-lab/irobman_project_wise2324.git
-cd irobman_project_wise2324
-conda create -n irobman python=3.8
-conda activate irobman
-conda install pybullet
-pip install matplotlib pyyaml
-git clone https://github.com/eleramp/pybullet-object-models.git # inside the irobman_project folder
-pip install -e pybullet-object-models/
+The overall goal of the project consists in perfoming a task of grasping, transporting and placing a object in a simulated environment, using a 7-DOF robotic arm. 
+
+The simulation, as well as all the code implemented for the task, shall be done in Python language, employing the `pybullet` library, which offers support for robotics simulation. 
+
+The elements of the simulation are:
+- A table 
+- A Franka robot arm placed on top of the table always at a fixed position.
+- An object from the YCB dataset, which is spawned at region of the table which some randomness on its position and orientation.
+- A basket placed on the oposite side of the table always at a fixed position.
+- Two spherical moving obstacles above the table, following a linear trajectory with random jittering.
+- Two RGB-D cameras, which provide color, depth and also segmentation information, being one placed at the end effector of the robot arm, and other placed above the table.
+
+The general outline for the tasks that should be performed in order to achive the overall goal are:
+1. **Perception:** estimate the 6D pose of the object to be grasped.
+2. **Control**: control robot arm end effector pose using one of the avaiable Jacobian methods.
+3. **Grasping:**: sample and perform a proper grasp to firmly catch the object.
+4. **Localization and Tracking**: use computer vision and tracking methods avaiable to keep track of the obstacles positions at the environment.
+5. **Planning**: plan a trajectory to carry the grasped object to the basket, taking in account obstacle positions, in order to avoid collisions.
+
+All of the tasks shall be performed using sensing information provided only by the 2 cameras and the internal sensors of the robot (joint positions, velocities, etc.), that meaning no ground truth information about object or obstacles is avaiable.
+
+## Task 1: Perception
+
+## Task 2: Control
+
+To perform the pose control for the robot end effector, the method applied was the **Pseudoinverse of Jacobian** [1]. This control method is described by the law:
+
+$$ \Delta \theta = \alpha \cdot \text{J}^{\dagger}\cdot \Delta p  $$
+
+Where:
+- $\Delta p$ is the difference from the desired to the current 6D pose of end effector.
+- $\text{J}^{\dagger}$ is the pseudoinverse of the jacobian matrix for the current joint configuration of the robot.
+- $\alpha$ is a real value that acts as a learning rate for the joint position update.
+- $\Delta \theta$ is the position variation that should be applied to joints, given as a $N$-dimensional vector, where $N$ is the number of active joints.
+
+In order to implement this controller in code, a method for the already existing class `Robot` was created named `IK_Solver`, which takes as argument the desired pose of the end effector and returns the new joint position. It makes use of a helping method, `compute_pose_error`, which as the name suggests, calculate the error between the desired and current pose. Lastly, the method `move_to_pose` uses the `IK_Solver` together with the already existing `position_control` to move the joints.
+
+
+```Python
+def compute_pose_error(self, target_pos, current_pos, target_ori, current_ori):
+    position_error = np.array(target_pos) - np.array(current_pos)
+    orientation_error_quat = p.getDifferenceQuaternion(target_ori, current_ori)
+    orientation_error = 2 * np.array(orientation_error_quat[:3])  
+    return np.hstack((position_error, orientation_error))
+
+
+def IK_solver(self, target_pos, target_ori):
+    #Calculate the error DeltaP between the current and desired end effector pose
+    current_ee_pos, current_ee_ori = self.get_ee_pose()
+    error = self.compute_pose_error(target_pos, current_ee_pos, target_ori, current_ee_ori)
+
+    joint_positions = self.get_joint_positions()
+    joint_velocities = self.get_joint_velocites()
+
+    #If position error is small enough, stop updating joint positions
+    if np.linalg.norm(error[:3]) < 0.05:
+        error[0:3]=[0,0,0]
+        if np.linalg.norm(error[4:]) <0.1:
+            return joint_positions
+        
+    #Calculate the Jacobian
+    zeros = np.zeros(len(joint_positions))
+    jacobian_linear, jacobian_angular = p.calculateJacobian(
+        self.id, 
+        self.ee_idx,
+        localPosition=[0, 0, 0], 
+        objPositions=joint_positions.tolist()+[0,0],   
+        objVelocities=joint_velocities.tolist()+[0,0], 
+        objAccelerations=zeros.tolist()+[0,0]
+    )
+    jacobian = np.vstack((jacobian_linear, jacobian_angular))[:, :7]
+
+    #Calculate the pseudo-inverse of the Jacobian
+    jacobian_pseudo_inv = np.linalg.pinv(jacobian)
+
+    #Calculate joint_increment DeltaTheta
+    step = 0.1
+    delta_theta = step*jacobian_pseudo_inv @ error
+
+    #Update the joint positions
+    joint_positions += delta_theta
+
+    return joint_positions
+
+
+def move_to_pose(self, target_pos, target_ori):
+    joint_postions = self.IK_solver(target_pos, target_ori)
+    self.position_control(joint_postions)
 ```
 
-Note that you should check after the installation if pybullet is using numpy or not by running `pybullet.isNumpyEnabled()` in your code. Everything can still run without this too but it will be slow. You can also increase the speed of execution by choosing not to see the camera output in the GUI by toggling `cam_render_flag`. You will be able to still see the GUI but the cam output there will not be visible.
 
-## Codebase Structure
-
-```shell
-
-├── configs
-│   └── test_config.yaml # config file for your experiments (you can make your own)
-├── main.py # example runner file (you can add a bash script here as well)
-├── README.md
-└── src
-    ├── objects.py # contains all objects and obstacle definitions
-    ├── robot.py # robot class
-    ├── simulation.py # simulation class
-    └── utils.py # helpful utils
-
-```
-
-### Things you can change and data that you can use:
-
-- Testing with custom objects
-- Testing with different control modes
-- Toggling obstacles on and off
-- Adding new metrics for better report and explanation
-- Information such as:
-    - Robot joint information
-    - Robot gripper and end-effector information
-    - Any information from camera
-    - Goal receptacle position
-    - Camera position/matrices
-
-### Things you cannot change without an explicit request to course TA's/Professor:
-- Any random sampling in the sim
-- Number of obstacles
-- Ground truth position of the object in question
-- Any ground truth orientation
-- Robot initial position and arm orientation
-- Goal receptacle position
-- Using built in high level pybullet methods like `calculateInverseDynamics`, `calculateInverseKinematics`
-
-
-_Note: If you want to add a new metric you can use ground truth information there but only for comparison with your prediction._
-
-### Checkpoints & Marks:
-- Code Related
-    - Being able to detect the object and get it’s pose (+15)
-    - Moving the arm to the object (+15)
-    - Being able to grasp object (+15)
-    - Being able to move the arm with the object to goal position (without obstacles) (+20)
-    - Detecting and tracking the obstacles (+15)
-    - Full setup: Being able to execute pick and place with obstacles present (+30)
-- A part of your marks is also fixed on the report (+10)
-
-We will only consider the checkpoints as complete if you provide a metric or a success rate for each. 
-The format of the report will be the standard TU-Darmstadt format.
-
-### Submission format:
-- Link to your github/gitlab repository containing a well documented README with scripts to run and test various parts of the system.
-- Report PDF.
-
-## Task 1 (Perception)
-Implement an object 6D pose estimation workflow using a simulation environment with two cameras. The first camera is static, positioned in front of a table, and is suitable for obstacle detection and coarse object localization. The second camera is mounted on the robot’s end-effector, aligned with robot link 11, and is used for refined pose estimation and grasping. Note that the camera's Y-axis points upward. For debugging, you can press W to toggle wireframe mode and J to display the axes in the GUI. You are encouraged to integrate state-of-the-art (SOTA) model-based 6D pose estimation methods or apply conventional approaches such as RANSAC and Iterative Closest Point (ICP), as demonstrated in the course. Additionally, synthetic masks generated by PyBullet can be used for object segmentation. 
-
-*Reference*
-Global registration (coarse pose estimation) [Tutorial](https://www.open3d.org/docs/release/tutorial/pipelines/global_registration.html)
-ICP registration (coarse pose estimation) [Tutorial](https://www.open3d.org/docs/release/tutorial/pipelines/global_registration.html)
-MegaPose, a method to estimate the 6D pose of novel objects, that is, objects unseen during training. [repo](https://github.com/megapose6d/megapose6d)
-
-
-## Task 2 (Control)
-
-Implement an IK-solver for the Franka-robot. You can use the pseudo-inverse or the transpose based solution. Use Your IK-solver to move the robot to a certain goal position. This Controller gets used throughout the project (e.g. executing the grasp - moving the object to the goal).
-
-## Task 3 (Grasping)
-
-Now that you have implemented a controller (with your IK solver) and tested it properly, it is time to put that to good use. From picking up objects to placing them a good well-placed grasp is essential. Hence, given an object you have to design a system that can effectively grasp it. You can use the model from the ![Grasping exercise](https://github.com/iROSA-lab/GIGA) and ![colab](https://colab.research.google.com/drive/1P80GRK0uQkFgDbHzLjwahyJOalW4M5vU?usp=sharing) to sample a grasp from a point-cloud. We have added a camera, where you can specify its position. You can set the YCB object to a fixed one (e.g. a Banana) for development. Showcase your ability to grasp random objects
-for the final submission.
-
-## Task 4 (Localization & Tracking)
-
-After you have grasped the object you want to place it in the goal-basket. In order to avoid the obstacles (red spheres), you need to track them. Use the provided fixed camera and your custom-positioned cameras as sensors to locate and track the obstacles. Visualize your tracking capabilities in the Report (optional) and use this information to avoid collision with them in the last task. You could use a Kalman Filter (e.g. from Assignment 2).
-
-## Task 5 (Planning)
-
-After you have grasped the YCB object and localized the obstacle, the final task is to plan the robot’s movement in order to place the object in the goal basket. Implement a motion planner to avoid static and dynamic obstacles and execute it with your controller. Once you are above the goal-basket open the gripper to drop the object in the goal.
-
-The most naive/cheating way of doing grasping can be run as
-```
-python3 -m pybullet_robots.panda.loadpanda_grasp
-```
-The code can be found [here](https://github.com/bulletphysics/bullet3/blob/master/examples/pybullet/gym/pybullet_robots/panda/loadpanda_grasp.py), and there is no collision avoidance at all.
-
-Motion planning can be generally decoupled into global planning and motion planning. Global planning is responsible for generate a reference path to avoid static obstacles while local planning is for keeping track of the reference path and avoid dynamic obstacles. 
-* For global planning, 
-    * An easy way is to use sampling-based methods (rrt, prm) to sample the reference path directly in 3d space and use your designed IK solver to track the path, see [here](https://github.com/yijiangh/pybullet_planning/tree/dev/src/pybullet_planning/motion_planners) for more algorithmic details.
-    * A faster but difficult solution is to sample the path directly in the configuration space so here you do not need the IK solver. You can see [here](https://github.com/sea-bass/pyroboplan) for an example, though it is not implemented using pybullet.
-* For local planning, after you have a prediction of the moving obstacles,
-    * An easy way is to use potential field method to avoid them. You can check [here](https://github.com/PulkitRustagi/Potential-Field-Path-Planning) for more details.
-    * A more advanced approach is to use MPC or sampling-based MPC to handle the moving obstacles. You can check [this](https://github.com/tud-amr/m3p2i-aip) for more details, though the kinematic model and collision checking are done in IsaacGym.
-
-You can decide to use whichever techniques to solve the task, you can use either a `global planner` and a `local planner` combination, or you can directly use the sampling-based MPC to avoid static and dynamic obstacles.
-
-# Final Words:
-We hope you have fun and explore robotics more deeply through this project.
+## References
+[1] Buss, Samuel R. "Introduction to inverse kinematics with jacobian transpose, pseudoinverse and damped least squares methods." IEEE Journal of Robotics and Automation 17.1-19 (2004): 16.
