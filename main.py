@@ -11,6 +11,7 @@ from pybullet_object_models import ycb_objects  # type:ignore
 
 from src.simulation import Simulation
 from src.utils import * 
+from src.trajectoryGeneration import *
 
 
 
@@ -40,23 +41,28 @@ def run_exp(config: Dict[str, Any]):
             print(f"Robot End Effector Position: {ee_pos}")
             print(f"Robot End Effector Orientation: {ee_ori}")
 
-            ###[MC: 2025-02-09] Test of Jacobian IK-Controller ###
-            target_position = [ 0.0, -0.5, 1.8] #moves in axis -X and +Z from default initial position...
+            ###[MC: 2025-02-15] Test of Jacobian IK-Controller ###
+            ###########################################################
+            target_position = [ 0.0, -0.6, 1.8] 
             axis0 = [0,1,0]
             angle0 =  np.pi
             axis1 = [0, 0, 1]
-            angle1 = np.pi/2
+            angle1 = -np.pi/4
             target_orientation = concatenate_quaternions(axis_angle_to_quaternion(axis0, angle0), axis_angle_to_quaternion(axis1, angle1)) #...keeping default initial rotation in quaternion
             robot = sim.get_robot()
 
+            positions1, orientations1 = interpolateLinearTrajectory( robot.get_ee_pose()[0], robot.get_ee_pose()[1], target_position, target_orientation, 1000)
+            positions2, orientations2 = interpolateLinearTrajectory( target_position, target_orientation, [ 0.0, -0.6, 1.4], target_orientation, 500)
+            ###########################################################
+           
             for i in range(10000):
                 sim.step()
                 
-                robot.move_to_pose(target_position, target_orientation)
+                ###########################################################
+                moveAlongTrajectory(robot, positions1, orientations1,  250, 1000, i)
+                moveAlongTrajectory(robot, positions2, orientations2,  1300, 500, i)
+                ###########################################################
                 
-                
-                
-
 
                 # for getting renders
                 #[MC:2025-02-10] PERFORMANCE: change render FPS

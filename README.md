@@ -33,12 +33,11 @@ All of the tasks shall be performed using sensing information provided only by t
 
 To perform the pose control for the robot end effector, the method applied was the **Pseudoinverse of Jacobian** [1]. This control method is described by the law:
 
-$$ \Delta \theta = \alpha \cdot \text{J}^{\dagger}\cdot \Delta p  $$
+$$ \Delta \theta =  \text{J}^{\dagger}\cdot \Delta p  $$
 
 Where:
 - $\Delta p$ is the difference from the desired to the current 6D pose of end effector.
 - $\text{J}^{\dagger}$ is the pseudoinverse of the jacobian matrix for the current joint configuration of the robot.
-- $\alpha$ is a real value that acts as a learning rate for the joint position update.
 - $\Delta \theta$ is the position variation that should be applied to joints, given as a $N$-dimensional vector, where $N$ is the number of active joints.
 
 In order to implement this controller in code, a method for the already existing class `Robot` was created named `IK_Solver`, which takes as argument the desired pose of the end effector and returns the new joint position. It makes use of a helping method, `compute_pose_error`, which as the name suggests, calculate the error between the desired and current pose. Lastly, the method `move_to_pose` uses the `IK_Solver` together with the already existing `position_control` to move the joints.
@@ -47,25 +46,24 @@ In order to implement this controller in code, a method for the already existing
 ```Python
 def compute_pose_error(self, target_pos, current_pos, target_ori, current_ori):
     position_error = np.array(target_pos) - np.array(current_pos)
-    orientation_error_quat = p.getDifferenceQuaternion(target_ori, current_ori)
-    orientation_error = 2 * np.array(orientation_error_quat[:3])  
+    orientation_error_quat = p.getDifferenceQuaternion(current_ori, target_ori)
+    orientation_error = 2 * np.array(orientation_error_quat[:3])  # Extract vector part
+    
     return np.hstack((position_error, orientation_error))
 
 
 def IK_solver(self, target_pos, target_ori):
     #Calculate the error DeltaP between the current and desired end effector pose
     current_ee_pos, current_ee_ori = self.get_ee_pose()
-    error = self.compute_pose_error(target_pos, current_ee_pos, target_ori, current_ee_ori)
-
     joint_positions = self.get_joint_positions()
     joint_velocities = self.get_joint_velocites()
+    error = self.compute_pose_error(target_pos, current_ee_pos, target_ori, current_ee_ori)
 
     #If position error is small enough, stop updating joint positions
-    if np.linalg.norm(error[:3]) < 0.05:
-        error[0:3]=[0,0,0]
-        if np.linalg.norm(error[4:]) <0.1:
+    if np.linalg.norm(error[:3]) < 0.01 and np.linalg.norm(error[4:]) <0.01:
             return joint_positions
         
+
     #Calculate the Jacobian
     zeros = np.zeros(len(joint_positions))
     jacobian_linear, jacobian_angular = p.calculateJacobian(
@@ -82,8 +80,7 @@ def IK_solver(self, target_pos, target_ori):
     jacobian_pseudo_inv = np.linalg.pinv(jacobian)
 
     #Calculate joint_increment DeltaTheta
-    step = 0.1
-    delta_theta = step*jacobian_pseudo_inv @ error
+    delta_theta = jacobian_pseudo_inv @ error
 
     #Update the joint positions
     joint_positions += delta_theta

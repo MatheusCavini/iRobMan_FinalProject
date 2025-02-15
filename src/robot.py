@@ -155,3 +155,21 @@ class Robot:
 
 ###################################################################################
 
+###[MC: 2025-02-15] create methods for opening and closing gripper ###
+    ###########################################################
+
+    def open_gripper(self):
+        p.setJointMotorControlArray(
+            self.id,
+            jointIndices=[9,10],
+            controlMode=p.POSITION_CONTROL,
+            targetPositions=[0.15, 0.15],
+        )
+
+    def close_gripper(self):
+        p.setJointMotorControlArray(
+            self.id,
+            jointIndices=[9,10],
+            controlMode=p.POSITION_CONTROL,
+            targetPositions=[0.02, 0.02],
+        )
