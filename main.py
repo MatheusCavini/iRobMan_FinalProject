@@ -10,6 +10,7 @@ from typing import Dict, Any
 from pybullet_object_models import ycb_objects  # type:ignore
 
 from src.simulation import Simulation
+from src.utils import * 
 
 
 
@@ -40,14 +41,20 @@ def run_exp(config: Dict[str, Any]):
             print(f"Robot End Effector Orientation: {ee_ori}")
 
             ###[MC: 2025-02-09] Test of Jacobian IK-Controller ###
-            target_position = [ 0, -0.47003696, 1.8] #moves in axis -X and +Z from default initial position...
-            target_orientation = [-0.4499506, 0.87065586, -0.19751983, -0.02210788] #...keeping default initial rotation in quaternion
+            target_position = [ 0.0, -0.5, 1.8] #moves in axis -X and +Z from default initial position...
+            axis0 = [0,1,0]
+            angle0 =  np.pi
+            axis1 = [0, 0, 1]
+            angle1 = np.pi/2
+            target_orientation = concatenate_quaternions(axis_angle_to_quaternion(axis0, angle0), axis_angle_to_quaternion(axis1, angle1)) #...keeping default initial rotation in quaternion
             robot = sim.get_robot()
 
             for i in range(10000):
                 sim.step()
                 
                 robot.move_to_pose(target_position, target_orientation)
+                
+                
                 
 
 
