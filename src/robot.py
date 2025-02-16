@@ -106,7 +106,7 @@ class Robot:
     ###########################################################
     def compute_pose_error(self, target_pos, current_pos, target_ori, current_ori):
         position_error = np.array(target_pos) - np.array(current_pos)
-        orientation_error_quat = p.getDifferenceQuaternion(target_ori, current_ori)
+        orientation_error_quat = p.getDifferenceQuaternion(current_ori, target_ori)
         orientation_error = 2 * np.array(orientation_error_quat[:3])  # Extract vector part
        
         return np.hstack((position_error, orientation_error))
@@ -120,9 +120,7 @@ class Robot:
         error = self.compute_pose_error(target_pos, current_ee_pos, target_ori, current_ee_ori)
 
         #If position error is small enough, stop updating joint positions
-        if np.linalg.norm(error[:3]) < 0.05:
-            error[0:3]=[0,0,0]
-            if np.linalg.norm(error[4:]) <0.1:
+        if np.linalg.norm(error[:3]) < 0.01 and np.linalg.norm(error[4:]) <0.01:
                 return joint_positions
             
 
@@ -139,13 +137,10 @@ class Robot:
         jacobian = np.vstack((jacobian_linear, jacobian_angular))[:, :7]
 
         #Calculate the pseudo-inverse of the Jacobian
-        damping = 0.1
-        identity = np.eye(jacobian.shape[1])
         jacobian_pseudo_inv = np.linalg.pinv(jacobian)
 
-        step = min(0.1, 2*np.linalg.norm(error[:3]))
         #Calculate joint_increment DeltaTheta
-        delta_theta = 0.15*jacobian_pseudo_inv @ error
+        delta_theta = jacobian_pseudo_inv @ error
 
         #Update the joint positions
         joint_positions += delta_theta
@@ -158,5 +153,23 @@ class Robot:
         joint_postions = self.IK_solver(target_pos, target_ori)
         self.position_control(joint_postions)
 
-###################################################################################
+    ###################################################################################
 
+    ###[MC: 2025-02-15] create methods for opening and closing gripper ###
+    ###########################################################
+
+    def open_gripper(self):
+        p.setJointMotorControlArray(
+            self.id,
+            jointIndices=[9,10],
+            controlMode=p.POSITION_CONTROL,
+            targetPositions=[0.15, 0.15],
+        )
+
+    def close_gripper(self):
+        p.setJointMotorControlArray(
+            self.id,
+            jointIndices=[9,10],
+            controlMode=p.POSITION_CONTROL,
+            targetPositions=[0.02, 0.02],
+        )

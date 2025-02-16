@@ -10,8 +10,11 @@ from typing import Dict, Any
 from pybullet_object_models import ycb_objects  # type:ignore
 
 from src.simulation import Simulation
-
-from detect_object import center_object
+from src.utils import * 
+from src.trajectoryGeneration import *
+from src.obstacleDetection import *
+#from src.CV import *
+from src.objectDetection import *
 
 import cv2
 
@@ -43,28 +46,32 @@ def run_exp(config: Dict[str, Any]):
             print(f"Robot End Effector Position: {ee_pos}")
             print(f"Robot End Effector Orientation: {ee_ori}")
 
-            ###[MC: 2025-02-09] Test of Jacobian IK-Controller ### 
-            target_position = [ -0.198356, -0.34616, 1] #moves in axis -X and +Z from default initial position...
-            target_orientation = [-0.4499506, 0.87065586, -0.19751983, -0.02210788] #...keeping default initial rotation in quaternion
+            ###[MC: 2025-02-15] Test of Jacobian IK-Controller ###
+            ###########################################################
+            target_position = [ 0.0, 0.6, 2] 
+            axis0 = [0,1,0]
+            angle0 =  np.pi
+            axis1 = [0, 0, 1]
+            angle1 = 0
+            target_orientation = concatenate_quaternions(axis_angle_to_quaternion(axis0, angle0), axis_angle_to_quaternion(axis1, angle1)) #...keeping default initial rotation in quaternion
             robot = sim.get_robot()
             
             rgb, depth, seg = sim.get_static_renders()
 
-            seg = (seg*60).astype(np.uint8)
-            print(seg)
-            print(seg.shape)
-            print(seg.dtype)
-            center_x, center_y = center_object(rgb, seg)
-            print("Object center: ", center_x, center_y)
-
-
-            for i in range(1):
+            positions1, orientations1 = interpolateLinearTrajectory( robot.get_ee_pose()[0], robot.get_ee_pose()[1], target_position, target_orientation, 1000)
+            positions2, orientations2 = interpolateLinearTrajectory( target_position, target_orientation, [ 0.0, -0.6, 1.4], target_orientation, 500)
+            ###########################################################
+            near = config['world_settings']['camera']['near']
+            far = config['world_settings']['camera']['far']
+           
+            for i in range(10):
                 sim.step()
                 
-                robot.move_to_pose(target_position, target_orientation)
-
+                ###########################################################
+                #moveAlongTrajectory(robot, positions1, orientations1,  2000, 1000, i)
+                #moveAlongTrajectory(robot, positions2, orientations2,  3050, 500, i)
+                ###########################################################
                 
-
 
                 # for getting renders
                 #[MC:2025-02-10] PERFORMANCE: change render FPS
@@ -73,9 +80,22 @@ def run_exp(config: Dict[str, Any]):
                     rgb, depth, seg = sim.get_static_renders()
                     
                
-                
 
+                #[MC:2025-02-16] Testing obstacle detection and measuring
+                ###########################################################
+                    depth_real = real_depth(depth, near, far)
+                    obstacles_2D_info = detect_obstacle_2D(rgb)
+                
+                #[DK:2025-02-16] Object detection and coordinate estimation
+                ###########################################################
+                    center = center_object(rgb, (seg*60).astype(np.uint8)) # X and Y value
+                    
                 obs_position_guess = np.zeros((2, 3))
+                obs_position_guess[0] = obstacle_3D_estimator(obstacles_2D_info, depth_real, sim.projection_matrix, sim.stat_viewMat, 0)
+                obs_position_guess[1] = obstacle_3D_estimator(obstacles_2D_info, depth_real, sim.projection_matrix, sim.stat_viewMat, 1)
+                ###########################################################
+
+
                 print((f"[{i}] Obstacle Position-Diff: "
                        f"{sim.check_obstacle_position(obs_position_guess)}"))
                 goal_guess = np.zeros((7,))
