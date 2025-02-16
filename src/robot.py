@@ -153,9 +153,9 @@ class Robot:
         joint_postions = self.IK_solver(target_pos, target_ori)
         self.position_control(joint_postions)
 
-###################################################################################
+    ###################################################################################
 
-###[MC: 2025-02-15] create methods for opening and closing gripper ###
+    ###[MC: 2025-02-15] create methods for opening and closing gripper ###
     ###########################################################
 
     def open_gripper(self):

@@ -1,5 +1,6 @@
 import numpy as np
 import pybullet as p
+import yaml
 
 
 def pb_image_to_numpy(rgbpx, depthpx, segpx, width, height):
@@ -62,3 +63,10 @@ def concatenate_quaternions(q1, q2):
     #generates the quaternion corresponding to 2 sequential rotations
     return p.multiplyTransforms([0, 0, 0], q2, [0, 0, 0], q1)[1] 
 ###########################################################
+
+
+##[MC:2025-02-15] Function to get real depth data using depth map provided by camera and its parameters
+def real_depth(depth, near, far):
+    #Near and Far are camera parameters
+    depth_real = 2 * far * near / (far + near - (2 * depth - 1) * (far - near))
+    return depth_real

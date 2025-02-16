@@ -12,6 +12,8 @@ from pybullet_object_models import ycb_objects  # type:ignore
 from src.simulation import Simulation
 from src.utils import * 
 from src.trajectoryGeneration import *
+from src.obstacleDetection import *
+from src.CV import *
 
 
 
@@ -47,20 +49,22 @@ def run_exp(config: Dict[str, Any]):
             axis0 = [0,1,0]
             angle0 =  np.pi
             axis1 = [0, 0, 1]
-            angle1 = -np.pi/4
+            angle1 = 0
             target_orientation = concatenate_quaternions(axis_angle_to_quaternion(axis0, angle0), axis_angle_to_quaternion(axis1, angle1)) #...keeping default initial rotation in quaternion
             robot = sim.get_robot()
 
             positions1, orientations1 = interpolateLinearTrajectory( robot.get_ee_pose()[0], robot.get_ee_pose()[1], target_position, target_orientation, 1000)
             positions2, orientations2 = interpolateLinearTrajectory( target_position, target_orientation, [ 0.0, -0.6, 1.4], target_orientation, 500)
             ###########################################################
+            near = config['world_settings']['camera']['near']
+            far = config['world_settings']['camera']['far']
            
             for i in range(10000):
                 sim.step()
                 
                 ###########################################################
-                moveAlongTrajectory(robot, positions1, orientations1,  250, 1000, i)
-                moveAlongTrajectory(robot, positions2, orientations2,  1300, 500, i)
+                #moveAlongTrajectory(robot, positions1, orientations1,  2000, 1000, i)
+                #moveAlongTrajectory(robot, positions2, orientations2,  3050, 500, i)
                 ###########################################################
                 
 
@@ -69,9 +73,22 @@ def run_exp(config: Dict[str, Any]):
                 if i%10 == 0: #Only get renders every 10 steps (240/10 = 24fps on image processing)
                     #rgb, depth, seg = sim.get_ee_renders()
                     rgb, depth, seg = sim.get_static_renders()
-                
 
+
+                #[MC:2025-02-16] Testing obstacle detection and measuring
+                ###########################################################
+                    depth_real =real_depth(depth, near, far)
+                    obstacles_2D_info = detect_obstacle_2D(rgb)
+
+
+                    
+                    
                 obs_position_guess = np.zeros((2, 3))
+                obs_position_guess[0] = obstacle_3D_estimator(obstacles_2D_info, depth_real, sim.projection_matrix, sim.stat_viewMat, 0)
+                obs_position_guess[1] = obstacle_3D_estimator(obstacles_2D_info, depth_real, sim.projection_matrix, sim.stat_viewMat, 1)
+                ###########################################################
+
+
                 print((f"[{i}] Obstacle Position-Diff: "
                        f"{sim.check_obstacle_position(obs_position_guess)}"))
                 goal_guess = np.zeros((7,))
