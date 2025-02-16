@@ -1,6 +1,6 @@
 # Intelligent Robotic Manipulation (WiSe 2024/25) - Final Project
 
-### Student 1: Daniel Bellardi Kerzner - XXXXXX
+### Student 1: Daniel Bellardi Kerzner - 2445155
 ### Student 2: Matheus Latorre Cavini - 2261960 
 
 
