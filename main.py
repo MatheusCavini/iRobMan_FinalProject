@@ -11,6 +11,10 @@ from pybullet_object_models import ycb_objects  # type:ignore
 
 from src.simulation import Simulation
 
+from detect_object import center_object
+
+import cv2
+
 
 
 def run_exp(config: Dict[str, Any]):
@@ -39,15 +43,26 @@ def run_exp(config: Dict[str, Any]):
             print(f"Robot End Effector Position: {ee_pos}")
             print(f"Robot End Effector Orientation: {ee_ori}")
 
-            ###[MC: 2025-02-09] Test of Jacobian IK-Controller ###
-            target_position = [ 0, -0.47003696, 1.8] #moves in axis -X and +Z from default initial position...
+            ###[MC: 2025-02-09] Test of Jacobian IK-Controller ### 
+            target_position = [ -0.198356, -0.34616, 1] #moves in axis -X and +Z from default initial position...
             target_orientation = [-0.4499506, 0.87065586, -0.19751983, -0.02210788] #...keeping default initial rotation in quaternion
             robot = sim.get_robot()
+            
+            rgb, depth, seg = sim.get_static_renders()
 
-            for i in range(10000):
+            seg = (seg*60).astype(np.uint8)
+            print(seg)
+            print(seg.shape)
+            print(seg.dtype)
+            center_x, center_y = center_object(rgb, seg)
+            print("Object center: ", center_x, center_y)
+
+
+            for i in range(1):
                 sim.step()
                 
                 robot.move_to_pose(target_position, target_orientation)
+
                 
 
 
@@ -56,6 +71,8 @@ def run_exp(config: Dict[str, Any]):
                 if i%10 == 0: #Only get renders every 10 steps (240/10 = 24fps on image processing)
                     #rgb, depth, seg = sim.get_ee_renders()
                     rgb, depth, seg = sim.get_static_renders()
+                    
+               
                 
 
                 obs_position_guess = np.zeros((2, 3))
