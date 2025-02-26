@@ -15,6 +15,7 @@ from src.trajectoryGeneration import *
 from src.obstacleDetection import *
 #from src.CV import *
 from src.objectDetection import *
+from src.grasp_generator import *
 
 import cv2
 
@@ -46,9 +47,14 @@ def run_exp(config: Dict[str, Any]):
             print(f"Robot End Effector Position: {ee_pos}")
             print(f"Robot End Effector Orientation: {ee_ori}")
 
+            depth_threshhold = 0.02
+            grabing_distance = True
+            global_object_position = False
+
+
             ###[MC: 2025-02-15] Test of Jacobian IK-Controller ###
             ###########################################################
-            target_position = [ 0.0, 0.6, 2] 
+            target_position = np.array([ -0.3, -0.3, 1.5])
             axis0 = [0,1,0]
             angle0 =  np.pi
             axis1 = [0, 0, 1]
@@ -56,52 +62,120 @@ def run_exp(config: Dict[str, Any]):
             target_orientation = concatenate_quaternions(axis_angle_to_quaternion(axis0, angle0), axis_angle_to_quaternion(axis1, angle1)) #...keeping default initial rotation in quaternion
             robot = sim.get_robot()
             
-            rgb, depth, seg = sim.get_static_renders()
+            rgb_static, depth_static, seg_static = sim.get_static_renders()
+            rgb_ee, depth_ee, seg_ee = sim.get_ee_renders()
 
-            positions1, orientations1 = interpolateLinearTrajectory( robot.get_ee_pose()[0], robot.get_ee_pose()[1], target_position, target_orientation, 1000)
-            positions2, orientations2 = interpolateLinearTrajectory( target_position, target_orientation, [ 0.0, -0.6, 1.4], target_orientation, 500)
+            positions, orientations = interpolateLinearTrajectory( robot.get_ee_pose()[0], robot.get_ee_pose()[1], target_position, target_orientation, 1000)
+            
             ###########################################################
             near = config['world_settings']['camera']['near']
             far = config['world_settings']['camera']['far']
            
-            for i in range(10):
+            for i in range(10000):
                 sim.step()
                 
-                ###########################################################
-                #moveAlongTrajectory(robot, positions1, orientations1,  2000, 1000, i)
-                #moveAlongTrajectory(robot, positions2, orientations2,  3050, 500, i)
-                ###########################################################
+                
+    
                 
 
                 # for getting renders
                 #[MC:2025-02-10] PERFORMANCE: change render FPS
                 if i%10 == 0: #Only get renders every 10 steps (240/10 = 24fps on image processing)
-                    #rgb, depth, seg = sim.get_ee_renders()
-                    rgb, depth, seg = sim.get_static_renders()
-                    
+                    rgb_ee, depth_ee, seg_ee = sim.get_ee_renders()
+                    #rgb_static, depth_static, seg_static = sim.get_static_renders()
                
 
-                #[MC:2025-02-16] Testing obstacle detection and measuring
+                '''#[MC:2025-02-16] Testing obstacle detection and measuring
                 ###########################################################
-                    depth_real = real_depth(depth, near, far)
-                    obstacles_2D_info = detect_obstacle_2D(rgb)
-                
-                #[DK:2025-02-16] Object detection and coordinate estimation
-                ###########################################################
-                    center = center_object(rgb, (seg*60).astype(np.uint8)) # X and Y value
+                    depth_real = real_depth(depth_static, near, far)
+                    obstacles_2D_info = detect_obstacle_2D(rgb_static)
+                    
                     
                 obs_position_guess = np.zeros((2, 3))
                 obs_position_guess[0] = obstacle_3D_estimator(obstacles_2D_info, depth_real, sim.projection_matrix, sim.stat_viewMat, 0)
                 obs_position_guess[1] = obstacle_3D_estimator(obstacles_2D_info, depth_real, sim.projection_matrix, sim.stat_viewMat, 1)
+
+                obj_2D_info = center_object((seg_static*60).astype(np.uint8)) # X and Y value
+                obj_position_guess = np.zeros((1, 3))
+                obj_position_guess = object_3D_estimator(obj_2D_info, depth_real, sim.projection_matrix, sim.stat_viewMat)
                 ###########################################################
-
-
                 print((f"[{i}] Obstacle Position-Diff: "
                        f"{sim.check_obstacle_position(obs_position_guess)}"))
                 goal_guess = np.zeros((7,))
                 print((f"[{i}] Goal Obj Pos-Diff: "
                        f"{sim.check_goal_obj_pos(goal_guess)}"))
-                print(f"[{i}] Goal Satisfied: {sim.check_goal()}")
+                print(f"[{i}] Goal Satisfied: {sim.check_goal()}")'''
+       
+
+                if i == 10:
+                    target_position = target_position + [0, 0.3, 0]
+                    positions, orientations = interpolateLinearTrajectory( robot.get_ee_pose()[0], robot.get_ee_pose()[1], target_position, target_orientation, 200)
+                
+                if i == 210:
+                    obj_2D_info = center_object((seg_static*60).astype(np.uint8)) # X and Y value
+                    
+                    #[DK:2025-02-26] Object detection and coordinate estimation
+                    ############################################################################
+                    obj_position_guess = np.zeros((1, 3))
+                    real_depth_static = real_depth(depth_static, near, far)
+                    obj_position_guess = object_3D_estimator(obj_2D_info, real_depth_static, sim.projection_matrix, sim.stat_viewMat)
+                    ############################################################################
+                    
+                    target_position = obj_position_guess + [0, 0, 0.3]
+                    positions, orientations = interpolateLinearTrajectory( robot.get_ee_pose()[0], robot.get_ee_pose()[1], target_position, target_orientation, 400)
+
+                if i == 610:
+                   
+                    robot.open_gripper()
+
+                    #[DK:2025-02-26] Object depth detection
+                    ############################################################################
+                    real_depth_ee = real_depth(depth_ee, near, far)
+                    axis2 = [0, 0, 1]
+                    angle2 = np.deg2rad(180 - grasping_generator( real_depth_ee , (seg_ee*60).astype(np.uint8)))
+                    target_orientation = concatenate_quaternions(target_orientation, axis_angle_to_quaternion(axis2, angle2))
+                    ############################################################################
+
+                    positions, orientations = interpolateLinearTrajectory( robot.get_ee_pose()[0], robot.get_ee_pose()[1], target_position, target_orientation, 100)
+                    grabing_distance = False
+                
+                if i == 710:
+                    target_position = target_position + [0, 0, -2]
+                    positions, orientations = interpolateLinearTrajectory( robot.get_ee_pose()[0], robot.get_ee_pose()[1], target_position, target_orientation, 10000)
+               
+                if i == 2200:
+                    target_position = target_position + [0, 0, -0.05]
+                    positions, orientations = interpolateLinearTrajectory( robot.get_ee_pose()[0], robot.get_ee_pose()[1], target_position, target_orientation, 100)
+                   
+                if i == 2300:
+                    target_position = target_position + [0, 0, 0.3]
+                    positions, orientations = interpolateLinearTrajectory( robot.get_ee_pose()[0], robot.get_ee_pose()[1], target_position, target_orientation, 400)
+                    robot.close_gripper()
+
+               
+
+                moveAlongTrajectory(robot, positions, orientations,  10, 200, i)
+                moveAlongTrajectory(robot, positions, orientations,  210, 400, i)
+                moveAlongTrajectory(robot, positions, orientations,  610, 100, i)
+
+                #[DK:2025-02-26] Object depth detection
+                ############################################################################
+                if not grabing_distance:
+                    moveAlongTrajectory(robot, positions, orientations,  710, 10000, i)
+                    real_depth_ee = real_depth(depth_ee, near, far)
+                    if np.min(real_depth_ee) < depth_threshhold:
+                        grabing_distance = True
+                        target_position = robot.get_ee_pose()[0]
+                 ############################################################################
+
+                
+                moveAlongTrajectory(robot, positions, orientations,  2200, 100, i)
+                moveAlongTrajectory(robot, positions, orientations,  2300, 400, i)
+
+                print("Step: ", i)
+                print("Target position: ", target_position)
+                print("Target orientation: ", quaternion_to_axis_angle(target_orientation))
+                       
     sim.close()
 
 
@@ -113,3 +187,4 @@ if __name__ == "__main__":
         except yaml.YAMLError as exc:
             print(exc)
     run_exp(config)
+
