@@ -163,7 +163,7 @@ class Robot:
             self.id,
             jointIndices=[9,10],
             controlMode=p.POSITION_CONTROL,
-            targetPositions=[0.15, 0.15],
+            targetPositions=[1, 1],
         )
 
     def close_gripper(self):
@@ -171,5 +171,5 @@ class Robot:
             self.id,
             jointIndices=[9,10],
             controlMode=p.POSITION_CONTROL,
-            targetPositions=[0.02, 0.02],
+            targetPositions=[0.00, 0.00],
         )

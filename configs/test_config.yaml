@@ -6,7 +6,7 @@ world_settings:
   default_goal_pos: [0.65, 0.8, 1.24]
   base_urdf: plane.urdf
   background_urdf: plane_transparent.urdf
-  turn_on_obstacles: true  # toggle for turning obstacles on and off
+  turn_on_obstacles: false  # toggle for turning obstacles on and off
   camera:
     width: 640  # image width.
     height: 480  # image height.

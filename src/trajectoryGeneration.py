@@ -16,10 +16,28 @@ def interpolateLinearTrajectory(initial_position, initial_orientation, end_posit
     return positions, orientations
 
 
+def interpolateTrajectoryWaypoins(position_waypoints, orientation_waypoints, n_points):
+    positions = []
+    orientations = []
+    for i in range(len(position_waypoints)-1):
+        pos, ori = interpolateLinearTrajectory(position_waypoints[i], orientation_waypoints[i], position_waypoints[i+1], orientation_waypoints[i+1], int(n_points/(len(position_waypoints)-1)))
+        positions += pos
+        orientations += ori
 
-def moveAlongTrajectory(robot, positions, orientations, step_start, steps_duration, current_step):
+    return positions, orientations
+
+
+
+
+def moveAlongTrajectory(robot, positions, orientations, step_start, current_step):
+    steps_duration = len(positions)
     if current_step > step_start and current_step < step_start+steps_duration:
         robot.move_to_pose(positions[current_step-step_start], orientations[current_step-step_start])
+    
+    if current_step == step_start + steps_duration:
+        return True
+    else: 
+        return False
 
 
 ###########################################################
