@@ -12,7 +12,6 @@ from src.simulation import Simulation
 from src.utils import * 
 from src.trajectoryGeneration import *
 from src.obstacleDetection import *
-from src.objectDetection import *
 from src.grasp_generator import *
 from src.stateMachine import states, events, transitions
 
@@ -30,9 +29,13 @@ def run_exp(config: Dict[str, Any]):
     #####################################################
 
     sim = Simulation(config)
+    i = True
 
     for obj_name in obj_names:
-        for tstep in range(10):
+        if i:
+            i = False
+            continue
+        for tstep in range(3):
             sim.reset(obj_name)
             print((f"Object: {obj_name}, Timestep: {tstep},"
                    f" pose: {sim.get_ground_tuth_position_object}"))
@@ -62,8 +65,7 @@ def run_exp(config: Dict[str, Any]):
             near = config['world_settings']['camera']['near']
             far = config['world_settings']['camera']['far']
             depth_threshhold = 0.025
-            #grabing_distance = True
-            #global_object_position = False
+            location_threshhold = 10 #This value is refering to pxs
 
 
             #Related to state machine
@@ -108,12 +110,19 @@ def run_exp(config: Dict[str, Any]):
 
 
 
+
                 ##[MC:2025-03-06] SIMULATION LOOP
                 ###########################################################
 
                 #STEP 1: WAIT FOR SIMULATION TO STABILIZE
-                if i == 700:
+                if i == 100:
                     event = events["SIMULATION_STABLE"]
+                   
+                    grasp_point_cloud((seg_static*60).astype(np.uint8), depth_real_static,  sim.projection_matrix, sim.stat_viewMat)
+                
+                '''
+                
+                
 
                 #STEP 2: SEARCH FOR OBJECT USING STATIC CAMERA
                 if state == states["SEARCHING_OBJECT"]:
@@ -126,7 +135,7 @@ def run_exp(config: Dict[str, Any]):
                     obj_position_guess = object_3D_estimator(obj_2D_info, real_depth_static, sim.projection_matrix, sim.stat_viewMat)
                     ############################################################################
                     
-                    target_position = obj_position_guess + [0, 0, 0.3]
+                    target_position = obj_position_guess + [0, 0, 0.1]
                     target_orientation = axis_angle_to_quaternion(axis0, angle0)
                     position_trajectory, orientation_trajectory = interpolateLinearTrajectory( robot.get_ee_pose()[0], robot.get_ee_pose()[1], target_position, target_orientation, 400)
                     event = events["OBJECT_POSITION_ESTIMATED"]
@@ -139,12 +148,30 @@ def run_exp(config: Dict[str, Any]):
                     if finished:
                         event = events["REACHED_OBJECT"]
                         robot.open_gripper()
+                
+                #STEP 4: GENERATE POSITION CORRECTOR
+                if state == states["GENERATING_CORRECTOR"]:
+                    #[DK:2025-02-26] Object depth detection
+                    axis2 = [0, 0, 1]
+                    rotation_z, corrector_angle = grasping_generator((seg_ee*60).astype(np.uint8))
+                    target_position = robot.get_ee_pose()[0] + [-np.cos(corrector_angle), np.sin(corrector_angle), 0]
+                    position_trajectory, orientation_trajectory = interpolateLinearTrajectory( robot.get_ee_pose()[0], robot.get_ee_pose()[1], target_position, target_orientation, 600)
+                    event = events["CORRECTION_GENERATED"]
+                    start_step = i + 100
+                
+                if state == states["CORRECTING_POSITION"]:
+                    event = events["POSITION_CORRECTED"]
+                    finished = moveAlongTrajectory(robot, position_trajectory, orientation_trajectory, start_step, i)
+                    if verify_location_threshhold((seg_ee*60).astype(np.uint8), location_threshhold):
+                        event = events["POSITION_CORRECTED"]
 
-                #STEP 4: GENERATE GRASP USING END-EFFECTOR CAMERA
+
+                #STEP 5: GENERATE GRASP USING END-EFFECTOR CAMERA
                 if state == states["GENERATING_GRASP"]:
                     #[DK:2025-02-26] Object depth detection
                     axis2 = [0, 0, 1]
-                    angle2 = np.deg2rad(180 - grasping_generator( depth_real_ee , (seg_ee*60).astype(np.uint8)))
+                    rotation_z, corrector_angle = grasping_generator((seg_ee*60).astype(np.uint8))
+                    angle2 = np.deg2rad(180-rotation_z)
                     target_position = robot.get_ee_pose()[0] - [0, 0, np.min(depth_real_ee)+depth_threshhold]
                     target_orientation = concatenate_quaternions(axis_angle_to_quaternion(axis0, angle0), axis_angle_to_quaternion(axis2, angle2))
                     position_trajectory, orientation_trajectory = interpolateLinearTrajectory( robot.get_ee_pose()[0], robot.get_ee_pose()[1], target_position, target_orientation, 600)
@@ -152,7 +179,7 @@ def run_exp(config: Dict[str, Any]):
                     start_step = i + 100
 
                 
-                #STEP 5: GRASP OBJECT
+                #STEP 7: GRASP OBJECT
                 if state == states["GRASPING"]:
                     finished = moveAlongTrajectory(robot, position_trajectory, orientation_trajectory, start_step, i)
                     if finished:
@@ -163,16 +190,20 @@ def run_exp(config: Dict[str, Any]):
                         target_orientation = concatenate_quaternions(axis_angle_to_quaternion(axis0, angle0), axis_angle_to_quaternion(axis2, angle2))
                         position_trajectory, orientation_trajectory = interpolateLinearTrajectory( robot.get_ee_pose()[0], robot.get_ee_pose()[1], target_position, target_orientation, 400)
                         start_step = i + 100
+                        i = 10000 - 5
                         
 
-                #STEP 6: LIFT OBJECT
+                #STEP 8: LIFT OBJECT
                 if state == states["LIFTING"] and (i>start_step):
                     robot.close_gripper()
                     finished = moveAlongTrajectory(robot, position_trajectory, orientation_trajectory, start_step, i)
                     if finished:
                         event = events["OBJECT_LIFTED"]
+                        
+                
+                
 
-                #STEP 7: GENERATE TRAJECTORY TO TARGET
+                #STEP 9: GENERATE TRAJECTORY TO TARGET
                 if state == states["GENERATING_TRAJECTORY"]:
                     waypoint_position = np.array([0.5,0,1.5])
                     waypoint_orientation = concatenate_quaternions(axis_angle_to_quaternion(axis0, angle0), axis_angle_to_quaternion([0,0,1], +np.pi/2))
@@ -185,12 +216,14 @@ def run_exp(config: Dict[str, Any]):
                     event = events["TRAJECTORY_GENERATED"]
                     start_step = i + 100
 
-                #STEP 8: MOVE TO TARGET AND DROP OBJECT
+                #STEP 10: MOVE TO TARGET AND DROP OBJECT
                 if state == states["MOVING_TO_TARGET"]:
                     finished = moveAlongTrajectory(robot, position_trajectory, orientation_trajectory, start_step, i)
                     if finished:
                         robot.open_gripper()
                         event = events["TARGET_REACHED"]
+                
+                '''
 
 
                 #After each step, updates the state machine
@@ -199,6 +232,7 @@ def run_exp(config: Dict[str, Any]):
                 print(f"[{i}] State: {state}")
                 print(f"[{i}] Event: {event}")
                 ###########################################################
+                
                        
     sim.close()
 
