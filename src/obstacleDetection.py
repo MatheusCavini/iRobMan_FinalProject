@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+import filterpy.kalman as kf
 
 
 ##[MC:2025-02-15] Set of functions to measure 3D position of objects
@@ -29,7 +30,7 @@ def detect_obstacle_2D(image):
     blurred = cv2.GaussianBlur(eroded, (9, 9), 2)
 
     # Detect circles using HoughCircles
-    circles = cv2.HoughCircles(blurred, cv2.HOUGH_GRADIENT, dp=1.2, minDist=100, param1=50, param2=30, minRadius=10, maxRadius=0)
+    circles = cv2.HoughCircles(blurred, cv2.HOUGH_GRADIENT, dp=1.2, minDist=50, param1=50, param2=30, minRadius=10, maxRadius=0)
 
     #Initialize list to store circle information
     circle_info = [] #stores (x,y) coordinates of the center and radius r
@@ -38,16 +39,20 @@ def detect_obstacle_2D(image):
         circles = np.round(circles[0, :]).astype("int")
         for (x, y, r) in circles:
             circle_info.append((x, y, r))
-            # Draw the circle in the original image in gree
-            #cv2.circle(image, (x, y), r, (0, 255, 0), 2)
-            #cv2.circle(image, (x, y), 2, (0, 255, 0), 3)
+
     
     #DEBUG: Display the image with highlighted circles
-    #cv2.imshow("Detected Red Circles", cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
-    #cv2.waitKey(1)
+    # Draw the circle in the original image in green
+    circle_info = sorted(circle_info, key=lambda c: c[0], reverse=True)
+    """for idx in range(len(circle_info)):
+        x, y, r = circle_info[idx]
+        cv2.circle(image, (x, y), r, (0, 255, 0), 2)
+        cv2.putText(image, str(idx), (x-2, y+2), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+    cv2.imshow("Detected Red Circles", cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
+    cv2.waitKey(1)"""
 
     #return circle info ordered by y coordinate
-    return sorted(circle_info, key=lambda c: c[1])
+    return circle_info
 
 
 def obstacle_3D_estimator(circle_info, depth_real, projection_matrix, view_matrix, obstacle_idx):
@@ -106,4 +111,73 @@ def obstacle_3D_estimator(circle_info, depth_real, projection_matrix, view_matri
     return (P_world[:3]/P_world[3]).flatten()
 
     
+    ###########################################################
+
+
+
+##[MC:2025-03-06] Create kalman filter for tracking obstacle positions
+###########################################################
+import numpy as np
+from filterpy.kalman import KalmanFilter
+
+class ObstacleKalmanFilter:
+    def __init__(self, dt=1.0, process_noise=1.0, measurement_noise=1.0):
+       
+        self.dt = dt
+        self.kf = KalmanFilter(dim_x=6, dim_z=3)
+
+        # State vector: [x, y, z, vx, vy, vz]
+        self.kf.x = np.zeros(6)
+
+        # State transition matrix
+        self.kf.F = np.array([
+            [1, 0, 0, dt, 0,  0],  # x' = x + vx*dt
+            [0, 1, 0, 0, dt,  0],  # y' = y + vy*dt
+            [0, 0, 1, 0,  0, dt],  # z' = z + vz*dt
+            [0, 0, 0, 1,  0,  0],  # vx' = vx
+            [0, 0, 0, 0,  1,  0],  # vy' = vy
+            [0, 0, 0, 0,  0,  1],  # vz' = vz
+        ])
+
+        # Measurement matrix
+        self.kf.H = np.array([
+            [1, 0, 0, 0, 0, 0],
+            [0, 1, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0, 0],
+        ])
+
+        
+        self.kf.P *= 1000  
+
+        # Process noise matrix
+        q = process_noise
+        self.kf.Q = np.array([
+            [q, 0, 0, 0, 0, 0],
+            [0, q, 0, 0, 0, 0],
+            [0, 0, q, 0, 0, 0],
+            [0, 0, 0, q, 0, 0],
+            [0, 0, 0, 0, q, 0],
+            [0, 0, 0, 0, 0, q],
+        ])
+
+        # Measurement noise matrix
+        r = measurement_noise
+        self.kf.R = np.array([
+            [r, 0, 0],
+            [0, r, 0],
+            [0, 0, r],
+        ])
+
+
+
+    def update(self, measurement):
+        
+        self.kf.predict()
+        self.kf.update(np.array(measurement))
+        return self.kf.x[:3]
+    
+    def get_velocity(self):
+        return self.kf.x[3:]
+
+
     ###########################################################

@@ -74,6 +74,13 @@ def run_exp(config: Dict[str, Any]):
             position_trajectory = None
             orientation_trajectory = None
             start_step = 0
+
+            #Kalman filters for each obstacle
+            kf0 = ObstacleKalmanFilter()
+            kf1 = ObstacleKalmanFilter()
+
+            #for debugging
+            EXECUTE = True
             ###########################################################
             
            
@@ -94,9 +101,12 @@ def run_exp(config: Dict[str, Any]):
 
                     obstacles_2D_info = detect_obstacle_2D(rgb_static)
 
-                obs_position_guess = np.zeros((2, 3))
-                obs_position_guess[0] = obstacle_3D_estimator(obstacles_2D_info, depth_real_static, sim.projection_matrix, sim.stat_viewMat, 0)
-                obs_position_guess[1] = obstacle_3D_estimator(obstacles_2D_info, depth_real_static, sim.projection_matrix, sim.stat_viewMat, 1)
+                    obs_position_guess = np.zeros((2, 3))
+                    obstacle0_measure = obstacle_3D_estimator(obstacles_2D_info, depth_real_static, sim.projection_matrix, sim.stat_viewMat, 0)
+                    obstacle1_measure = obstacle_3D_estimator(obstacles_2D_info, depth_real_static, sim.projection_matrix, sim.stat_viewMat, 1)
+                    obs_position_guess[0] = kf0.update(obstacle0_measure)
+                    obs_position_guess[1] = kf1.update(obstacle1_measure)
+                
 
 
                 ###########################################################
@@ -114,6 +124,11 @@ def run_exp(config: Dict[str, Any]):
                 ##[MC:2025-03-06] SIMULATION LOOP
                 ###########################################################
 
+                if EXECUTE:
+
+                    #STEP 1: WAIT FOR SIMULATION TO STABILIZE
+                    if i == 120:
+                        event = events["SIMULATION_STABLE"]
                 #STEP 1: WAIT FOR SIMULATION TO STABILIZE
                 if i == 100:
                     event = events["SIMULATION_STABLE"]
@@ -225,7 +240,6 @@ def run_exp(config: Dict[str, Any]):
                 
                 '''
 
-
                 #After each step, updates the state machine
                 state = transitions[state][event]
                 event = events["NONE"]
@@ -245,4 +259,6 @@ if __name__ == "__main__":
         except yaml.YAMLError as exc:
             print(exc)
     run_exp(config)
+
+    
 

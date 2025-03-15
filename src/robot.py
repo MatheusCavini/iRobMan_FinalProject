@@ -137,7 +137,10 @@ class Robot:
         jacobian = np.vstack((jacobian_linear, jacobian_angular))[:, :7]
 
         #Calculate the pseudo-inverse of the Jacobian
-        jacobian_pseudo_inv = np.linalg.pinv(jacobian)
+
+        damping_factor = 0.05 #Use damped inverse model to avoid singularities
+        identity_matrix = np.eye(jacobian.shape[0])
+        jacobian_pseudo_inv = jacobian.T @ np.linalg.inv(jacobian @ jacobian.T + damping_factor**2 * identity_matrix)
 
         #Calculate joint_increment DeltaTheta
         delta_theta = jacobian_pseudo_inv @ error
@@ -173,3 +176,29 @@ class Robot:
             controlMode=p.POSITION_CONTROL,
             targetPositions=[0.00, 0.00],
         )
+
+
+
+
+
+
+
+    def is_pose_reachable(self, target_pos, target_ori):
+        # Tentar resolver a cinemática inversa diretamente com PyBullet
+        joint_positions = p.calculateInverseKinematics(
+            self.id, 
+            self.ee_idx, 
+            target_pos, 
+            target_ori
+        )
+        
+        # Verificar se a solução foi encontrada
+        if joint_positions is None:
+            return False
+        
+        # Verificar se os ângulos das articulações estão dentro dos limites
+        for i, theta in enumerate(joint_positions[:len(self.arm_idx)]):
+            if theta < self.lower_limits[i] or theta > self.upper_limits[i]:
+                return False
+        
+        return True
