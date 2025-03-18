@@ -12,7 +12,7 @@ def create_grasp_mesh(
     width: float = 0.05,
     height: float = 0.1,
     depth: float = 0.03,
-    gripper_distance: float = 0.1,
+    gripper_distance: float = 0.15,
     gripper_height: float = 0.1,
     color_left: list = [1, 0, 0],  # Red
     color_right: list = [0, 1, 0],  # Green,
@@ -118,6 +118,7 @@ def exp_map_so3(axis: np.ndarray, angle: float) -> np.ndarray:
 def sample_grasps(
     center_point: np.ndarray,
     num_grasps: int,
+    offset: float = 0.05,
 ) -> Sequence[Tuple[np.ndarray, np.ndarray]]:
     """
     Generates multiple random grasp poses around a given point cloud.
@@ -139,7 +140,7 @@ def sample_grasps(
         # Translation implies translation from a center point
         ############################TODO############################
         # Sample a grasp center by adding random offsets to the center point
-        grasp_center = center_point
+        grasp_center = center_point + np.random.uniform(0, offset, size=3)
  
         # Sample a random axis-angle representation
         random_axis = np.random.uniform(-1, 1, size=3)
@@ -155,3 +156,173 @@ def sample_grasps(
         grasp_poses_list.append((R, grasp_center))
 
     return grasp_poses_list
+
+def check_grasp_collision(
+    grasp_meshes: Sequence[o3d.geometry.TriangleMesh],
+    object_mesh: o3d.geometry.TriangleMesh,
+    num_colisions: int = 5,
+    tolerance: float = 0.00001) -> bool:
+    """
+    Checks for collisions between a gripper grasp pose and target object
+    using point cloud sampling.
+
+    Args:
+        grasp_meshes: List of mesh geometries representing the gripper components
+        object_mesh: Triangle mesh of the target object
+        num_collisions: Threshold on how many points to check
+        tolerance: Distance threshold for considering a collision (in meters)
+
+    Returns:
+        bool: True if collision detected between gripper and object, False otherwise
+    """
+    # Combine gripper meshes
+    combined_gripper = o3d.geometry.TriangleMesh()
+    for mesh in grasp_meshes[1:]:
+        combined_gripper += mesh
+
+    # Sample points from both meshes
+    num_points = 5000 # Subsample both meshes to this many points
+    #######################TODO#######################
+    point_cloud_object = object_mesh.sample_points_uniformly(number_of_points=num_points) #Sample point cloud of object
+    
+    point_cloud_grasp = o3d.geometry.PointCloud()
+    for mesh in grasp_meshes:
+        point_cloud_grasp += mesh.sample_points_uniformly(number_of_points=int(num_points/4)) #Sample point cloud of grasp
+    
+
+    ##################################################
+    # Build KDTree for object points
+    is_collision = False
+    #######################TODO#######################
+    kdtree = o3d.geometry.KDTreeFlann(point_cloud_object) # create KDTree
+    for query_point in point_cloud_grasp.points:
+        
+        [k, idx, dist] = kdtree.search_knn_vector_3d(query_point, num_colisions) # Search points close and get the distance
+        for distance in dist:
+            if distance < tolerance:
+                is_collision = True
+
+
+    #######################TODO#######################
+
+    return is_collision
+
+# Fuction used to visualize multiple objects
+def visualize_3d_objs(objs: Sequence[Any]) -> None:
+    vis = o3d.visualization.Visualizer()
+    vis.create_window(window_name='Output viz')
+    for obj in objs:
+        vis.add_geometry(obj)
+
+    ctr = vis.get_view_control()
+    ctr.set_zoom(0.8)
+    ctr.set_front([0, 0, 1])
+    ctr.set_up([0, 1, 0])
+    vis.poll_events()
+    vis.update_renderer()
+    vis.run()
+    vis.destroy_window()
+
+
+def grasp_dist_filter(center_grasp: np.ndarray,
+                      mesh_center: np.ndarray,
+                      tolerance: float = 0.05)->bool:
+    is_within_range = False
+    #######################TODO#######################
+    distance = np.linalg.norm(center_grasp - mesh_center) #Verify distance between centers
+    if distance < tolerance:
+        is_within_range = True
+
+    ##################################################
+    return is_within_range
+
+### Auxiliar function: convert lineset to pointcloud
+def lineset_to_pointcloud(lineset, points_per_line=1000):
+    points = np.asarray(lineset.points)
+    lines = np.asarray(lineset.lines)
+
+    point_list = []
+    for line in lines:
+        start_point = points[line[0]]
+        end_point = points[line[1]]
+        direction = end_point - start_point
+        length = np.linalg.norm(direction)
+        spacing = length / points_per_line
+        direction = direction / length
+        num_points = int(length / spacing) + 1
+        for i in range(num_points):
+            point = start_point + i * spacing * direction
+            point_list.append(point)
+    point_cloud = o3d.geometry.PointCloud()
+    point_cloud.points = o3d.utility.Vector3dVector(point_list)
+    
+    return point_cloud
+
+def check_grasp_containment(
+    left_finger_center: np.ndarray,
+    right_finger_center: np.ndarray,
+    finger_length: float,
+    object_pcd: o3d.geometry.PointCloud,
+    num_rays: int,
+    rotation_matrix: np.ndarray, # rotati
+) -> Tuple[bool, float]:
+    """
+    Checks if any line between the gripper fingers intersects with the object mesh.
+
+    Args:
+        left_finger_center: Center of Left finger of grasp
+        right_finger_center: Center of Right finger of grasp
+        finger_length: Finger Length of the gripper.
+        object_pcd: Point Cloud of the target object
+        clearance_threshold: Minimum required clearance between object and gripper
+
+    Returns:
+        tuple[bool, float]: (intersection_exists, intersection_depth)
+        - intersection_exists: True if any line between fingers intersects object
+        - intersection_depth: Depth of deepest intersection point
+    """
+
+    left_center = np.asarray(left_finger_center)
+    right_center = np.asarray(right_finger_center)
+
+    intersections = []
+    
+    # Check for intersections between corresponding points
+    object_tree = o3d.geometry.KDTreeFlann(object_pcd)
+
+    #######################TODO#######################
+
+    contained = False
+
+    #Create the Rays between the fingers using lineset
+    instances = np.linspace(-0.5, 0.5, num_rays)
+    left_points = [left_center + (rotation_matrix @ np.array([0,finger_length,0]))* i for i in instances]
+    right_points = [right_center + (rotation_matrix @ np.array([0,finger_length,0]))* i for i in instances]
+
+    
+    rays_pcds = []
+    for j in range(0, num_rays):
+        ray_set = o3d.geometry.LineSet()
+        ray_set.points = o3d.utility.Vector3dVector([left_points[j], right_points[j]])
+        ray_set.lines = o3d.utility.Vector2iVector([[0,1]])
+        #Convert each line into a pointcloud with 1000 points each
+        rays_pcds.append(lineset_to_pointcloud(ray_set,1000))
+    
+
+    #Check for intersection (colision between rays and object)
+    #For each ray
+    for ray in rays_pcds:
+        #Use the same method as before to check collisions
+        for point in np.asarray(ray.points):
+            # searc the nearest neighbor of the point in the KDTree
+            [k, idx, distances] = object_tree.search_knn_vector_3d(point, 1)
+            #If a collision is detected
+            if k > 0 and distances[0] <= 0.0001:  
+                #Consider that an occurance of intersection for one ray
+                intersections.append(ray)
+                contained = True
+                break
+    
+    
+    containment_ratio = len(intersections)/(num_rays)
+    return contained, containment_ratio

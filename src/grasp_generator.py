@@ -59,11 +59,12 @@ import numpy as np
 import open3d as o3d
 from typing import Any, Sequence, Optional
 from src.create_grabber import *
-import copy
+from src.robot import *
+from scipy.spatial.transform import Rotation as R
 
 
 # Uses the segmentation camera to aproximate the object to a point_cloud
-def recreate_3d_system_object(grayscale, depth, center_x, center_y, projection_matrix, stat_viewMat, radius=100, num_points=10000):
+def recreate_3d_system_object(grayscale, depth, center_x, center_y, projection_matrix, stat_viewMat, radius=75, num_points=10000):
     """
     Recreates a 3D system from grayscale intensity and depth information, selecting random points around a specified pixel.
     
@@ -122,7 +123,7 @@ def recreate_3d_system_object(grayscale, depth, center_x, center_y, projection_m
     return mesh
 
 # Uses the segmentation camera to aproximate the table to a point_cloud
-def recreate_3d_system_table(grayscale, depth, center_x, center_y, projection_matrix, stat_viewMat, radius=100, num_points=10000):
+def recreate_3d_system_table(grayscale, depth, center_x, center_y, projection_matrix, stat_viewMat, radius=75, num_points=100000):
     """
     Recreates a 3D system from grayscale intensity and depth information, selecting random points around a specified pixel.
     
@@ -181,21 +182,7 @@ def recreate_3d_system_table(grayscale, depth, center_x, center_y, projection_ma
     #o3d.visualization.draw_geometries([mesh])
     return mesh
 
-# Fuction used to visualize multiple objects
-def visualize_3d_objs(objs: Sequence[Any]) -> None:
-    vis = o3d.visualization.Visualizer()
-    vis.create_window(window_name='Output viz')
-    for obj in objs:
-        vis.add_geometry(obj)
 
-    ctr = vis.get_view_control()
-    ctr.set_zoom(0.8)
-    ctr.set_front([0, 0, 1])
-    ctr.set_up([0, 1, 0])
-    vis.poll_events()
-    vis.update_renderer()
-    vis.run()
-    vis.destroy_window()
 
 #Calculate the center of the object using the camera
 def center_object(img_seg):
@@ -224,25 +211,7 @@ def center_object(img_seg):
     return cx, cy
 
 
-#Generates multiple grasos randomly
-def generate_multiple_grasps(center, pcd_object):
-    sample_grasp_lists = sample_grasps(center_point=center, num_grasps=100)
 
-    #######################TODO######################
-    all_grasp_meshes = []
-    for R_matrix, grasp_center in sample_grasp_lists:
-
-        grasp_mesh = create_grasp_mesh(center, rotation_matrix=R_matrix) # create a new mesh for another grasp orientation
-
-        # Store the transformed mesh
-        all_grasp_meshes.append(grasp_mesh)
-    
-    '''vis_meshes = [pcd_object]
-    for grasp_mesh in all_grasp_meshes:
-        vis_meshes.extend(grasp_mesh)
-    
-    visualize_3d_objs(vis_meshes)'''
-    return all_grasp_meshes
 
 #Returns a estimation for a pixel in the static camera
 def point_3D_estimator(object_info, depth_real, projection_matrix, view_matrix):
@@ -292,55 +261,7 @@ def point_3D_estimator(object_info, depth_real, projection_matrix, view_matrix):
     # Return only (x, y, z) world coordinates
     return (P_world[:3]/P_world[3]).flatten()
 
-def check_grasp_collision(
-    grasp_meshes: Sequence[o3d.geometry.TriangleMesh],
-    object_mesh: o3d.geometry.TriangleMesh,
-    num_colisions: int = 10,
-    tolerance: float = 0.00001) -> bool:
-    """
-    Checks for collisions between a gripper grasp pose and target object
-    using point cloud sampling.
 
-    Args:
-        grasp_meshes: List of mesh geometries representing the gripper components
-        object_mesh: Triangle mesh of the target object
-        num_collisions: Threshold on how many points to check
-        tolerance: Distance threshold for considering a collision (in meters)
-
-    Returns:
-        bool: True if collision detected between gripper and object, False otherwise
-    """
-    # Combine gripper meshes
-    combined_gripper = o3d.geometry.TriangleMesh()
-    for mesh in grasp_meshes[1:]:
-        combined_gripper += mesh
-
-    # Sample points from both meshes
-    num_points = 5000 # Subsample both meshes to this many points
-    #######################TODO#######################
-    point_cloud_object = object_mesh.sample_points_uniformly(number_of_points=num_points) #Sample point cloud of object
-    
-    point_cloud_grasp = o3d.geometry.PointCloud()
-    for mesh in grasp_meshes:
-        point_cloud_grasp += mesh.sample_points_uniformly(number_of_points=int(num_points/4)) #Sample point cloud of grasp
-    
-
-    ##################################################
-    # Build KDTree for object points
-    is_collision = False
-    #######################TODO#######################
-    kdtree = o3d.geometry.KDTreeFlann(point_cloud_object) # create KDTree
-    for query_point in point_cloud_grasp.points:
-        
-        [k, idx, dist] = kdtree.search_knn_vector_3d(query_point, num_colisions) # Search points close and get the distance
-        for distance in dist:
-            if distance < tolerance:
-                is_collision = True
-
-
-    #######################TODO#######################
-
-    return is_collision
 
 def merge_meshes(mesh_object, mesh_table):
     pcd_object = mesh_object.sample_points_uniformly(number_of_points=5000)
@@ -355,33 +276,70 @@ def merge_meshes(mesh_object, mesh_table):
         merged_colors = np.vstack((np.asarray(pcd_table.colors), np.asarray(pcd_object.colors)))
         merged_pcd.colors = o3d.utility.Vector3dVector(merged_colors)
     
-    alpha = 0.03  # Adjust alpha for tight or loose fitting
+    alpha = 0.5 # Adjust alpha for tight or loose fitting
     mesh_merged = o3d.geometry.TriangleMesh.create_from_point_cloud_alpha_shape(merged_pcd, alpha)
     return mesh_merged
 
 
 # Takes the grayscale and depth image and returns optimal grasp position and orientation
 def grasp_point_cloud(grayscale, depth, projection_matrix, stat_viewMat):
-    cv2.imwrite("Gray_SCALE.png", grayscale)
+    #cv2.imwrite("Gray_SCALE_ee.png", grayscale)
+
+    #Obtain the center of the object
     center_x, center_y = center_object(grayscale)
    
+    #Recreate the 3D system
     mesh_object = recreate_3d_system_object(grayscale, depth, center_x, center_y, projection_matrix, stat_viewMat)
     mesh_table = recreate_3d_system_table(grayscale, depth, center_x, center_y, projection_matrix, stat_viewMat)
     
+    #Reclculate the center of the object
     points = np.asarray(mesh_object.sample_points_uniformly(number_of_points=5000).points)
     center = points.mean(axis=0)
-    all_grasp_meshes = generate_multiple_grasps(center, mesh_object)
 
+    # Generate grasp poses
+    sample_grasp_lists = sample_grasps(center_point=center, num_grasps=100, offset=0.1)
+    all_grasp_meshes = []
+    for R_matrix, grasp_center in sample_grasp_lists:
+        grasp_mesh = create_grasp_mesh(center_point= grasp_center, rotation_matrix=R_matrix) # create a new mesh for another grasp orientation
+        all_grasp_meshes.append(grasp_mesh)# Store the transformed mesh
 
-   
-    vis_meshes = [mesh_object, mesh_table]
+    # Visualize the object, table, and grasp poses
+    coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.2, origin=[0, 0, 1.25])
+    vis_meshes = [mesh_object, mesh_table, coordinate_frame]
+    
+    #Merge the object and table meshes to verify collisions
     mesh_object_plus_table = merge_meshes(mesh_object, mesh_table)
-    #visualize_3d_objs(vis_meshes)
-    for grasp_mesh in all_grasp_meshes:
-        if not check_grasp_collision(grasp_mesh, mesh_object_plus_table):
-            vis_meshes.extend(grasp_mesh)
 
+
+    
+    mesh_pcd_object = mesh_object.sample_points_uniformly(number_of_points=50000)
+    for pose, grasp_mesh in zip(sample_grasp_lists, all_grasp_meshes):
+        not_collision = False
+        in_range = False
+        contained = False
+        contained_percentage = 0.0
+        left_finger, right_finger = grasp_mesh[0], grasp_mesh[1]
+        contained, ratio = check_grasp_containment(
+            left_finger_center=left_finger.get_center(),
+            right_finger_center=right_finger.get_center(),
+            finger_length=0.1,
+            object_pcd=mesh_pcd_object,
+            num_rays=50,
+            rotation_matrix=pose[0]
+        )
+        contained_percentage = ratio
+        center_grasp = pose[1]
+        not_collision = (not check_grasp_collision(grasp_mesh, mesh_object_plus_table))
+        in_range = grasp_dist_filter(center_grasp, center)
+        if ((not_collision and in_range) and contained):
+            color = [1.0 - contained_percentage,
+                    contained_percentage, 0.0]
+            for g_mesh in grasp_mesh:
+                # to make results look more interpretable
+                g_mesh.compute_vertex_normals()
+                g_mesh.paint_uniform_color(color)
+            vis_meshes.extend(grasp_mesh)
     visualize_3d_objs(vis_meshes)
 
+    return 
 
-    return
