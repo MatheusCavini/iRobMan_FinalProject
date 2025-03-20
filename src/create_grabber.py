@@ -140,7 +140,7 @@ def sample_grasps(
         # Translation implies translation from a center point
         ############################TODO############################
         # Sample a grasp center by adding random offsets to the center point
-        grasp_center = center_point + np.random.uniform(0, offset, size=3)
+        grasp_center = center_point + np.random.uniform(-offset, offset, size=3)
  
         # Sample a random axis-angle representation
         random_axis = np.random.uniform(-1, 1, size=3)
@@ -161,7 +161,7 @@ def check_grasp_collision(
     grasp_meshes: Sequence[o3d.geometry.TriangleMesh],
     object_mesh: o3d.geometry.TriangleMesh,
     num_colisions: int = 5,
-    tolerance: float = 0.00001) -> bool:
+    tolerance: float = 0.0001) -> bool:
     """
     Checks for collisions between a gripper grasp pose and target object
     using point cloud sampling.
@@ -181,7 +181,7 @@ def check_grasp_collision(
         combined_gripper += mesh
 
     # Sample points from both meshes
-    num_points = 5000 # Subsample both meshes to this many points
+    num_points = 1000 # Subsample both meshes to this many points
     #######################TODO#######################
     point_cloud_object = object_mesh.sample_points_uniformly(number_of_points=num_points) #Sample point cloud of object
     

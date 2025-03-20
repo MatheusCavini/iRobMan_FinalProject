@@ -1,7 +1,7 @@
 import numpy as np
 import pybullet as p
 import yaml
-
+from scipy.spatial.transform import Rotation as R
 
 def pb_image_to_numpy(rgbpx, depthpx, segpx, width, height):
     """
@@ -70,3 +70,13 @@ def real_depth(depth, near, far):
     #Near and Far are camera parameters
     depth_real = 2 * far * near / (far + near - (2 * depth - 1) * (far - near))
     return depth_real
+
+def R_matrix_2_axisangle(R_matrix):
+    # Convert to axis-angle representation
+    rotation = R.from_matrix(R_matrix)
+    axis_angle = rotation.as_rotvec()
+
+    # Extract rotation axis and angle
+    angle = np.linalg.norm(axis_angle)  # Angle in radians
+    axis = axis_angle / angle if angle != 0 else np.array([0, 0, 1])  # Avoid division by zero
+    return axis, angle

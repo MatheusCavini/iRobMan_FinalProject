@@ -8,12 +8,13 @@ from typing import Dict, Any
 
 from pybullet_object_models import ycb_objects  # type:ignore
 
+
 from src.simulation import Simulation
 from src.utils import * 
 from src.trajectoryGeneration import *
 from src.obstacleDetection import *
-from src.grasp_generator import *
 from src.stateMachine import states, events, transitions
+from src.grasp_generator_2 import *
 
 
 def run_exp(config: Dict[str, Any]):
@@ -29,9 +30,13 @@ def run_exp(config: Dict[str, Any]):
     #####################################################
 
     sim = Simulation(config)
+    controle = False
 
     for obj_name in obj_names:
         for tstep in range(1):
+            if controle:
+                controle = False
+                continue
             
             sim.reset(obj_name)
             print((f"Object: {obj_name}, Timestep: {tstep},"
@@ -82,7 +87,7 @@ def run_exp(config: Dict[str, Any]):
             ###########################################################
             
            
-            for i in range(10000):
+            for i in range(700):
                 sim.step()
                 
                 # for getting renders
@@ -159,9 +164,13 @@ def run_exp(config: Dict[str, Any]):
                         target_position = robot.get_ee_pose()[0] - [0, 0, np.min(depth_real_ee)+depth_threshhold]
                         target_orientation = concatenate_quaternions(axis_angle_to_quaternion(axis0, angle0), axis_angle_to_quaternion(axis2, angle2))'''
 
-                        obj_position_guess_0, obj_orientation_guess = grasp_point_cloud((seg_static*60).astype(np.uint8), depth_real_static, sim.projection_matrix, sim.stat_viewMat)
+                        obj_orientation_guess_R_matrix = grasp_point_cloud_1((seg_static*60).astype(np.uint8), depth_real_static, sim.projection_matrix, sim.stat_viewMat)
+                        obj_orientation_guess_R_matrix = [[-0.19863986,  0.28762546, -0.93691718],[-0.97854971, -0.00493447,  0.20595171],[ 0.05461377,  0.95773026,  0.28243599]]
+                        obj_orientation_guess = R_matrix_2_axisangle(obj_orientation_guess_R_matrix)
+                        #obj_orientation_guess = [[-1.0, 0.0, 0], np.pi/4]
+                        print(obj_orientation_guess)
 
-                        target_orientation = concatenate_quaternions(axis_angle_to_quaternion(axis0, angle0), axis_angle_to_quaternion(obj_orientation_guess[0], obj_orientation_guess[1]))
+                        target_orientation = axis_angle_to_quaternion(obj_orientation_guess[0], obj_orientation_guess[1])
 
                         position_trajectory, orientation_trajectory = interpolateLinearTrajectory( robot.get_ee_pose()[0], robot.get_ee_pose()[1], target_position, target_orientation, 600)
                         event = events["GRASP_GENERATED"]
