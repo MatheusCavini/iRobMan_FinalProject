@@ -159,8 +159,8 @@ def sample_grasps(
 
 def check_grasp_collision(
     grasp_meshes: Sequence[o3d.geometry.TriangleMesh],
-    object_mesh: o3d.geometry.TriangleMesh,
-    num_colisions: int = 5,
+    kdtree: o3d.geometry.KDTreeFlann,
+    num_colisions: int = 2,
     tolerance: float = 0.0001) -> bool:
     """
     Checks for collisions between a gripper grasp pose and target object
@@ -182,28 +182,17 @@ def check_grasp_collision(
 
     # Sample points from both meshes
     num_points = 1000 # Subsample both meshes to this many points
-    #######################TODO#######################
-    point_cloud_object = object_mesh.sample_points_uniformly(number_of_points=num_points) #Sample point cloud of object
-    
     point_cloud_grasp = o3d.geometry.PointCloud()
     for mesh in grasp_meshes:
         point_cloud_grasp += mesh.sample_points_uniformly(number_of_points=int(num_points/4)) #Sample point cloud of grasp
     
-
-    ##################################################
-    # Build KDTree for object points
     is_collision = False
-    #######################TODO#######################
-    kdtree = o3d.geometry.KDTreeFlann(point_cloud_object) # create KDTree
+    
     for query_point in point_cloud_grasp.points:
-        
         [k, idx, dist] = kdtree.search_knn_vector_3d(query_point, num_colisions) # Search points close and get the distance
         for distance in dist:
             if distance < tolerance:
                 is_collision = True
-
-
-    #######################TODO#######################
 
     return is_collision
 

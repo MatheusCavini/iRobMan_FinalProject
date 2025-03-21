@@ -1,15 +1,16 @@
 import numpy as np
-import open3d as o3d
-import numpy as np
-import open3d as o3d
-from typing import Any, Sequence, Optional
-from scipy.spatial import KDTree
-from src.create_grabber import *
-from src.robot import *
-from scipy.spatial.transform import Rotation as R
+from giga.simulation import ClutterRemovalSim
 from giga.perception import *
+from giga.utils.transform import Rotation, Transform
+from giga.utils.implicit import get_mesh_pose_list_from_world, as_mesh#, get_scene_from_mesh_pose_list
+from giga.utils.misc import apply_noise
 from giga.grasp_sampler import GpgGraspSamplerPcl
+import open3d as o3d
+from open3d.visualization import draw_plotly
+import trimesh
+import matplotlib.pyplot as plt
 import cv2
+from src.create_grabber import *
 
 #Returns a estimation for a pixel in the static camera
 def point_3D_estimator(object_info, depth_real, projection_matrix, view_matrix):
@@ -88,7 +89,7 @@ def center_object(img_seg):
     return cx, cy
 
 # Uses the segmentation camera to aproximate the object to a point_cloud
-def recreate_3d_system_object(grayscale, depth, center_x, center_y, projection_matrix, stat_viewMat, z_plane = 1.25, radius=75, num_points=10000):
+def recreate_3d_system_object(grayscale, depth, center_x, center_y, projection_matrix, stat_viewMat,z_plane = 1.25,  radius=75, num_points=10000):
     """
     Recreates a 3D system from grayscale intensity and depth information, selecting random points around a specified pixel.
     
@@ -147,16 +148,60 @@ def recreate_3d_system_object(grayscale, depth, center_x, center_y, projection_m
     alpha = 0.1  # Adjust this value based on your dataset
     mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_alpha_shape(pcd_Intermediary, alpha)
 
-    Final_points = np.asarray(mesh.sample_points_poisson_disk(number_of_points=250).points)
-    Final_points = Final_points[Final_points[:, 2] >= z_plane+0.005]
-    Final_points = Final_points - [0, 0, z_plane+0.005]
+    pcd = mesh.sample_points_poisson_disk(number_of_points=5000)
+    pcd.paint_uniform_color([1, 0.706, 0])
 
-    pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(Final_points)
+   
+    return pcd, mesh
 
-    # Visualize the point cloud
-    #o3d.visualization.draw_geometries([pcd])
-    return pcd
+def grasp2mesh(grasp, score, finger_depth=0.05):
+    # color = cmap(float(score))
+    # color = (np.array(color) * 255).astype(np.uint8)
+    color = np.array([0, 250, 0, 180]).astype(np.uint8)
+    radius = 0.1 * finger_depth
+    w, d = grasp.width, finger_depth
+    scene = trimesh.Scene()
+    # left finger
+    pose = grasp.pose * Transform(Rotation.identity(), [0.0, -w / 2, d / 2])
+    scale = [radius, radius, d]
+    left_finger = trimesh.creation.cylinder(radius,
+                                            d,
+                                            transform=pose.as_matrix())
+    scene.add_geometry(left_finger, 'left_finger')
+
+    # right finger
+    pose = grasp.pose * Transform(Rotation.identity(), [0.0, w / 2, d / 2])
+    scale = [radius, radius, d]
+    right_finger = trimesh.creation.cylinder(radius,
+                                             d,
+                                             transform=pose.as_matrix())
+    scene.add_geometry(right_finger, 'right_finger')
+
+    # wrist
+    pose = grasp.pose * Transform(Rotation.identity(), [0.0, 0.0, -d / 4])
+    scale = [radius, radius, d / 2]
+    wrist = trimesh.creation.cylinder(radius,
+                                      d / 2,
+                                      transform=pose.as_matrix())
+    scene.add_geometry(wrist, 'wrist')
+
+    # palm
+    pose = grasp.pose * Transform(
+        Rotation.from_rotvec(np.pi / 2 * np.r_[1.0, 0.0, 0.0]),
+        [0.0, 0.0, 0.0])
+    scale = [radius, radius, w]
+    palm = trimesh.creation.cylinder(radius, w, transform=pose.as_matrix())
+    scene.add_geometry(palm, 'palm')
+    scene = as_mesh(scene)
+    colors = np.repeat(color[np.newaxis, :], len(scene.faces), axis=0)
+    scene.visual.face_colors = colors
+    return scene
+
+def verify_table_collision(points, z_plane = 1.25):
+    min_value = np.min(points[:, 2])
+    if min_value < z_plane:
+        return True
+    return False
 
 
 
@@ -164,7 +209,7 @@ def grasp_point_cloud_2(grayscale, depth, projection_matrix, stat_viewMat):
     if True:
         center_x, center_y = center_object(grayscale)
 
-        pcd_object = recreate_3d_system_object(grayscale, depth, center_x, center_y, projection_matrix, stat_viewMat)  
+        pcd_object, _ = recreate_3d_system_object(grayscale, depth, center_x, center_y, projection_matrix, stat_viewMat)  
 
         bbox = pcd_object.get_axis_aligned_bounding_box()
         pcd_object = pcd_object.crop(bbox)
@@ -172,9 +217,6 @@ def grasp_point_cloud_2(grayscale, depth, projection_matrix, stat_viewMat):
         coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.2, origin=[0, 0, 0])
     
         vis_meshes = [pcd_object, coordinate_frame]
-
-        # Visualize the point cloud
-        o3d.visualization.draw_geometries([pcd_object, coordinate_frame])
 
         # Grasp Sampling using GPD
         num_parallel_workers = 2
@@ -185,12 +227,22 @@ def grasp_point_cloud_2(grayscale, depth, projection_matrix, stat_viewMat):
         grasps, grasps_pos, grasps_quat = sampler.sample_grasps_parallel(pcd_object, num_parallel=num_parallel_workers, num_grasps=num_grasps, max_num_samples=80,
                                     safety_dis_above_table=safety_dist_above_table, show_final_grasps=False)  # Enable final grasp visualization
         
-        all_grasp_meshes = []
-        for grasp_position, grasp_quaternion in zip(grasps_pos, grasps_quat):
-            print(grasp_position, grasp_quaternion)
-            grasp_rotation = R.from_quat(grasp_quaternion).as_matrix()
-            grasp = create_grasp_mesh(center_point=grasp_position, rotation_matrix=grasp_rotation)
-            all_grasp_meshes.append(grasp)
-            vis_meshes.extend(grasp)
+        available_grasps = []
+        
+
+        grasp_mesh_list = [grasp2mesh(g, score=1) for g in grasps]
+        for grasp_mesh, grasp_pos, grasp_quat in zip(grasp_mesh_list, grasps_pos, grasps_quat):
+            points, _ = trimesh.sample.sample_surface(as_mesh(grasp_mesh), 5000)
+
+            colision = verify_table_collision(points)
+
+            if not colision:
+                pcd_grasp = o3d.geometry.PointCloud()
+                pcd_grasp.points = o3d.utility.Vector3dVector(points)
+                vis_meshes.append(pcd_grasp)
+                available_grasps.append([grasp_pos, grasp_quat])
 
         visualize_3d_objs(vis_meshes)
+        print(available_grasps)
+        print(available_grasps[0])
+        return available_grasps[0]

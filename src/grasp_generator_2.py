@@ -68,7 +68,6 @@ def recreate_3d_system_object(grayscale, depth, center_x, center_y, projection_m
     mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_alpha_shape(pcd_Intermediary, alpha)
 
     pcd = mesh.sample_points_poisson_disk(number_of_points=5000)
-    pcd.points = o3d.utility.Vector3dVector(points)
     pcd.paint_uniform_color([1, 0.706, 0])
 
    
@@ -155,7 +154,7 @@ def table_grasp_collision(grasp_pcd):
     return False
 
 # Takes the grayscale and depth image and returns optimal grasp position and orientation
-def grasp_point_cloud_1(grayscale, depth, projection_matrix, stat_viewMat, offset=0):
+def grasp_point_cloud_1(grayscale, depth, projection_matrix, stat_viewMat, offset=0.01):
     
     center_x, center_y = center_object(grayscale)
     
@@ -166,6 +165,9 @@ def grasp_point_cloud_1(grayscale, depth, projection_matrix, stat_viewMat, offse
     
         #Recreate the 3D system
         object_pcd, object_mesh = recreate_3d_system_object(grayscale, depth, center_x, center_y, projection_matrix, stat_viewMat)
+        o3d.io.write_point_cloud("output.pcd", object_pcd) 
+        kdtree = o3d.geometry.KDTreeFlann(object_pcd)
+        
 
         # Visualize the object, table, and grasp poses
         coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.2, origin=[0, 0, 0])
@@ -173,14 +175,16 @@ def grasp_point_cloud_1(grayscale, depth, projection_matrix, stat_viewMat, offse
 
         #Recalculate the center of the object
         points = np.asarray(object_pcd.points)
-        center = points.mean(axis=0)
+        center = np.array(points.mean(axis=0)) + np.array([0, 0, 0.01])
 
         # Generate grasp poses
-        sample_grasp_lists = sample_grasps(center_point=center, num_grasps=50, offset=offset)
+        sample_grasp_lists = sample_grasps(center_point=center, num_grasps=100, offset=offset)
         all_grasp_meshes = []
         for R_matrix, grasp_center in sample_grasp_lists:
             grasp_mesh = create_grasp_mesh(center_point= grasp_center, rotation_matrix=R_matrix) # create a new mesh for another grasp orientation
             all_grasp_meshes.append(grasp_mesh)# Store the transformed mesh
+        
+       
 
         # Filter grasps based on collision, distance and feasibility
         possible_grasps = []
@@ -189,6 +193,8 @@ def grasp_point_cloud_1(grayscale, depth, projection_matrix, stat_viewMat, offse
             contained = False
             contained_percentage = 0.0
             left_finger, right_finger = grasp_mesh[0], grasp_mesh[1]
+
+            print(".")
 
             #Check the grasp containment
             contained, ratio = check_grasp_containment(
@@ -200,25 +206,27 @@ def grasp_point_cloud_1(grayscale, depth, projection_matrix, stat_viewMat, offse
                 rotation_matrix=pose[0]
             )
 
-            #Check grasp collision and distance to object
-            contained_percentage = ratio
-            not_collision = (not check_grasp_collision(grasp_mesh, object_mesh)) and (not table_grasp_collision(grasp_mesh))
-            if (not_collision and contained):
-            
-                color = [1.0 - contained_percentage,
-                        contained_percentage, 0.0]
-                for g_mesh in grasp_mesh:
-                    # to make results look more interpretable
-                    g_mesh.compute_vertex_normals()
-                    g_mesh.paint_uniform_color(color)
-                vis_meshes.extend(grasp_mesh)                
-                possible_grasps.append(pose[0]) #Store the feasible grasps
+            if contained:
+                not_collision = not check_grasp_collision(grasp_mesh, kdtree)
+                if not_collision:
+                    not_collision = not table_grasp_collision(grasp_mesh)
+                    if not_collision:
+                        #Check grasp collision and distance to object
+                        contained_percentage = ratio
+                        color = [1.0 - contained_percentage,
+                                contained_percentage, 0.0]
+                        for g_mesh in grasp_mesh:
+                            # to make results look more interpretable
+                            g_mesh.compute_vertex_normals()
+                            g_mesh.paint_uniform_color(color)
+                        vis_meshes.extend(grasp_mesh)                
+                        possible_grasps.append(pose[0]) #Store the feasible grasps
         
         visualize_3d_objs(vis_meshes)
             
         if len(possible_grasps) == 0:
             print("No feasible grasps found.")
-            return grasp_point_cloud_1(grayscale, depth, projection_matrix, stat_viewMat, offset=offset+0.05)
+            return grasp_point_cloud_1(grayscale, depth, projection_matrix, stat_viewMat, offset=offset+0.01)
             
         if len(possible_grasps) == 1:
             return possible_grasps[0]

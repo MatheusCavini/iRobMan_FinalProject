@@ -14,7 +14,7 @@ from src.utils import *
 from src.trajectoryGeneration import *
 from src.obstacleDetection import *
 from src.stateMachine import states, events, transitions
-from src.grasp_generator_2 import *
+from src.grasp_generator_3 import *
 
 
 def run_exp(config: Dict[str, Any]):
@@ -87,7 +87,7 @@ def run_exp(config: Dict[str, Any]):
             ###########################################################
             
            
-            for i in range(700):
+            for i in range(10000):
                 sim.step()
                 
                 # for getting renders
@@ -164,13 +164,20 @@ def run_exp(config: Dict[str, Any]):
                         target_position = robot.get_ee_pose()[0] - [0, 0, np.min(depth_real_ee)+depth_threshhold]
                         target_orientation = concatenate_quaternions(axis_angle_to_quaternion(axis0, angle0), axis_angle_to_quaternion(axis2, angle2))'''
 
-                        obj_orientation_guess_R_matrix = grasp_point_cloud_1((seg_static*60).astype(np.uint8), depth_real_static, sim.projection_matrix, sim.stat_viewMat)
-                        obj_orientation_guess_R_matrix = [[-0.19863986,  0.28762546, -0.93691718],[-0.97854971, -0.00493447,  0.20595171],[ 0.05461377,  0.95773026,  0.28243599]]
-                        obj_orientation_guess = R_matrix_2_axisangle(obj_orientation_guess_R_matrix)
+                        obj_position_guess, obj_orientation_guess_Quaternion = grasp_point_cloud_2((seg_static*60).astype(np.uint8), depth_real_static, sim.projection_matrix, sim.stat_viewMat)
+                        #obj_orientation_guess_R_matrix = [[-0.19863986,  0.28762546, -0.93691718],[-0.97854971, -0.00493447,  0.20595171],[ 0.05461377,  0.95773026,  0.28243599]]
+                        #obj_orientation_guess = R_matrix_2_axisangle(obj_orientation_guess_R_matrix)
                         #obj_orientation_guess = [[-1.0, 0.0, 0], np.pi/4]
-                        print(obj_orientation_guess)
+                        #print(obj_orientation_guess)
 
-                        target_orientation = axis_angle_to_quaternion(obj_orientation_guess[0], obj_orientation_guess[1])
+                        grasp_direction = quaternion_to_direction(obj_orientation_guess_Quaternion)
+                        # Normalize the direction vector (to ensure unit length)
+                        grasp_direction = grasp_direction / np.linalg.norm(grasp_direction)
+                        
+                        # Compute pre-grasp position
+                        target_position = obj_position_guess - 0.15 * grasp_direction
+
+                        target_orientation =  obj_orientation_guess_Quaternion
 
                         position_trajectory, orientation_trajectory = interpolateLinearTrajectory( robot.get_ee_pose()[0], robot.get_ee_pose()[1], target_position, target_orientation, 600)
                         event = events["GRASP_GENERATED"]
@@ -184,16 +191,16 @@ def run_exp(config: Dict[str, Any]):
                             event = events["GRASP_SUCCESS"]
                             
                             #generate lift trajectory
-                            target_position = robot.get_ee_pose()[0] + [0, 0, 0.3]
+                            target_position =  obj_position_guess + 0.05 * grasp_direction
                             position_trajectory, orientation_trajectory = interpolateLinearTrajectory( robot.get_ee_pose()[0], robot.get_ee_pose()[1], target_position, target_orientation, 400)
                             start_step = i + 100
                             
 
                     #STEP 6: LIFT OBJECT
-                    if state == states["LIFTING"] and (i>start_step):
-                        robot.close_gripper()
+                    if state == states["LIFTING"]:
                         finished = moveAlongTrajectory(robot, position_trajectory, orientation_trajectory, start_step, i)
                         if finished:
+                            robot.close_gripper()
                             event = events["OBJECT_LIFTED"]
 
                     #STEP 7: GENERATE TRAJECTORY TO TARGET

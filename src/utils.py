@@ -2,6 +2,7 @@ import numpy as np
 import pybullet as p
 import yaml
 from scipy.spatial.transform import Rotation as R
+import scipy
 
 def pb_image_to_numpy(rgbpx, depthpx, segpx, width, height):
     """
@@ -80,3 +81,30 @@ def R_matrix_2_axisangle(R_matrix):
     angle = np.linalg.norm(axis_angle)  # Angle in radians
     axis = axis_angle / angle if angle != 0 else np.array([0, 0, 1])  # Avoid division by zero
     return axis, angle
+
+
+def quaternion_to_direction(quaternion):
+    """
+    Convert a quaternion to a direction vector.
+
+    Parameters:
+    - quaternion (list or numpy array): The quaternion [qx, qy, qz, qw].
+
+    Returns:
+    - numpy array: The rotated direction vector.
+    """
+    quaternion = np.array(quaternion, dtype=float)
+
+    # Define the reference approach direction (e.g., Z-axis)
+    reference_direction = np.array([0, 0, 1])
+
+    # Convert quaternion to rotation object
+    rotation = scipy.spatial.transform.Rotation.from_quat(quaternion)
+
+    # Rotate the reference direction
+    direction = rotation.apply(reference_direction)
+
+    # Normalize the direction vector
+    direction = direction / np.linalg.norm(direction)
+
+    return direction
