@@ -10,7 +10,23 @@ from open3d.visualization import draw_plotly
 import trimesh
 import matplotlib.pyplot as plt
 import cv2
-from src.create_grabber import *
+from typing import Any, Sequence
+
+# Fuction used to visualize multiple objects
+def visualize_3d_objs(objs: Sequence[Any]) -> None:
+    vis = o3d.visualization.Visualizer()
+    vis.create_window(window_name='Output viz')
+    for obj in objs:
+        vis.add_geometry(obj)
+
+    ctr = vis.get_view_control()
+    ctr.set_zoom(0.8)
+    ctr.set_front([0, 0, 1])
+    ctr.set_up([0, 1, 0])
+    vis.poll_events()
+    vis.update_renderer()
+    vis.run()
+    vis.destroy_window()
 
 #Returns a estimation for a pixel in the static camera
 def point_3D_estimator(object_info, depth_real, projection_matrix, view_matrix):
@@ -137,6 +153,8 @@ def recreate_3d_system_object(grayscale, depth, center_x, center_y, projection_m
     # Project all points onto this plane
     projected_points = points.copy()
     projected_points[:, 2] = z_plane  # Set all Z coordinates to the plane level
+    points = points - np.array([0, 0, z_plane])  # Translate to the origin
+    projected_points = projected_points - np.array([0, 0, z_plane])  # Translate to the origin
 
     Intermediary_points = np.vstack((points, projected_points))
 
@@ -145,7 +163,7 @@ def recreate_3d_system_object(grayscale, depth, center_x, center_y, projection_m
 
     # Correct point cloud by adding exta points
     # Compute a mesh using the alpha shape algorithm
-    alpha = 0.1  # Adjust this value based on your dataset
+    alpha = 0.5  # Adjust this value based on your dataset
     mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_alpha_shape(pcd_Intermediary, alpha)
 
     pcd = mesh.sample_points_poisson_disk(number_of_points=5000)
@@ -235,12 +253,13 @@ def grasp_point_cloud_2(grayscale, depth, projection_matrix, stat_viewMat):
             points, _ = trimesh.sample.sample_surface(as_mesh(grasp_mesh), 5000)
 
             colision = verify_table_collision(points)
+            colision = False
 
             if not colision:
                 pcd_grasp = o3d.geometry.PointCloud()
                 pcd_grasp.points = o3d.utility.Vector3dVector(points)
                 vis_meshes.append(pcd_grasp)
-                available_grasps.append([grasp_pos, grasp_quat])
+                available_grasps.append([grasp_pos + np.array([0, 0, 1.25]), grasp_quat])
 
         visualize_3d_objs(vis_meshes)
         print(available_grasps)

@@ -3,7 +3,7 @@ world_settings:
   timestep_freq: 240
   mode: 2 # 0: no gui(headless), 1: with gui, show static camera, 2: with gui, show end-effector camera
   default_obj_pos: [0.0, -0.65, 1.40]
-  default_goal_pos: [0.65, 0.8, 1.24]
+  default_goal_pos: [0.65, 0.55, 1.24]
   base_urdf: plane.urdf
   background_urdf: plane_transparent.urdf
   turn_on_obstacles: false  # toggle for turning obstacles on and off

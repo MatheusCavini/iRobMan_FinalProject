@@ -14,7 +14,7 @@ from src.utils import *
 from src.trajectoryGeneration import *
 from src.obstacleDetection import *
 from src.stateMachine import states, events, transitions
-from src.grasp_generator_3 import *
+from src.grasp_generator import *
 
 
 def run_exp(config: Dict[str, Any]):
@@ -30,7 +30,7 @@ def run_exp(config: Dict[str, Any]):
     #####################################################
 
     sim = Simulation(config)
-    controle = False
+    controle = True
 
     for obj_name in obj_names:
         for tstep in range(1):
@@ -85,10 +85,11 @@ def run_exp(config: Dict[str, Any]):
             #for debugging
             EXECUTE = True
             ###########################################################
-            
+           
            
             for i in range(10000):
                 sim.step()
+    
                 
                 # for getting renders
                 #[MC:2025-02-10] PERFORMANCE: change render FPS
