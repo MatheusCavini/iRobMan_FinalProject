@@ -67,6 +67,7 @@ def concatenate_quaternions(q1, q2):
 
 
 ##[MC:2025-02-15] Function to get real depth data using depth map provided by camera and its parameters
+###########################################################
 def real_depth(depth, near, far):
     #Near and Far are camera parameters
     depth_real = 2 * far * near / (far + near - (2 * depth - 1) * (far - near))
@@ -81,8 +82,10 @@ def R_matrix_2_axisangle(R_matrix):
     angle = np.linalg.norm(axis_angle)  # Angle in radians
     axis = axis_angle / angle if angle != 0 else np.array([0, 0, 1])  # Avoid division by zero
     return axis, angle
+###########################################################
 
-
+##[DK:2025-03-25] Function to obtain the direction vector for the pre-grasping
+###########################################################
 def quaternion_to_direction(quaternion):
     """
     Convert a quaternion to a direction vector.
@@ -108,9 +111,10 @@ def quaternion_to_direction(quaternion):
     direction = direction / np.linalg.norm(direction)
 
     return direction
+###########################################################
 
-
-
+##[DK:2025-03-28] Simple array comparator
+###########################################################
 def compare_arrays(A, B):
     if len(A) != len(B):
         return False
@@ -118,3 +122,4 @@ def compare_arrays(A, B):
         if A[i] != B[i]:
             return False
     return True
+###########################################################

@@ -34,7 +34,7 @@ def run_exp(config: Dict[str, Any]):
     
 
     for obj_name in obj_names:
-        #if obj_name != 'c:\\users\\danie\\teste\\pybullet-object-models\\pybullet_object_models\\ycb_objects\\YcbGelatinBox':
+        #if obj_name != 'c:\\users\\danie\\teste\\pybullet-object-models\\pybullet_object_models\\ycb_objects\\YcbPowerDrill':
         #    continue
       
         for tstep in range(10):
@@ -87,7 +87,7 @@ def run_exp(config: Dict[str, Any]):
             ###########################################################
            
            
-            for i in range(2400):
+            for i in range(10000):
                 sim.step()
     
                 
@@ -137,15 +137,16 @@ def run_exp(config: Dict[str, Any]):
                     if state == states["SEARCHING_OBJECT"]:
                         obj_2D_info = center_object((seg_static*60).astype(np.uint8)) # X and Y value
                         
-                        #[DK:2025-02-26] Object detection and coordinate estimation
+                        #[DK:2025-02-26] Object detection and position estimation
                         ############################################################################
                         obj_position_guess = np.zeros((1, 3))
                         real_depth_static = real_depth(depth_static, near, far)
                         obj_position_guess = point_3D_estimator(obj_2D_info, real_depth_static, sim.projection_matrix, sim.stat_viewMat)
-                        ############################################################################
+                       
                         if compare_arrays(obj_position_guess, [0, 0, 0]):
                             obj_position_guess = np.array([-0.1, -0.5, 1.4])
                         target_position = obj_position_guess + np.array([-0.3, 0.1, 0.1])
+                        ############################################################################
                         
                         target_orientation = axis_angle_to_quaternion(axis0, angle0)
                         position_trajectory, orientation_trajectory = interpolateLinearTrajectory( robot.get_ee_pose()[0], robot.get_ee_pose()[1], target_position, target_orientation, 400)
@@ -162,12 +163,13 @@ def run_exp(config: Dict[str, Any]):
 
                     #STEP 4: GENERATE GRASP USING END-EFFECTOR CAMERA
                     if state == states["GENERATING_GRASP"]:
-                        obj_position_guess, obj_orientation_guess_Quaternion = grasp_point_cloud_2((seg_static*60).astype(np.uint8), depth_real_static, sim.projection_matrix, sim.stat_viewMat, robot)
-                        #obj_orientation_guess_R_matrix = [[-0.19863986,  0.28762546, -0.93691718],[-0.97854971, -0.00493447,  0.20595171],[ 0.05461377,  0.95773026,  0.28243599]]
-                        #obj_orientation_guess = R_matrix_2_axisangle(obj_orientation_guess_R_matrix)
-                        #obj_orientation_guess = [[-1.0, 0.0, 0], np.pi/4]
-                        #print(obj_orientation_guess)
 
+                        #[DK:2025-03-25] Grasping generation
+                        ############################################################################
+                        # Obtain the ideal position and orientation for the grasp
+                        obj_position_guess, obj_orientation_guess_Quaternion = grasp_point_cloud_2((seg_static*60).astype(np.uint8), depth_real_static, sim.projection_matrix, sim.stat_viewMat, robot)
+
+                        # Extract the grasp direction from the ideal orientation
                         grasp_direction = quaternion_to_direction(obj_orientation_guess_Quaternion)
                         # Normalize the direction vector (to ensure unit length)
                         grasp_direction = grasp_direction / np.linalg.norm(grasp_direction)
@@ -176,8 +178,9 @@ def run_exp(config: Dict[str, Any]):
                         target_position = obj_position_guess - 0.15 * grasp_direction
 
                         target_orientation =  obj_orientation_guess_Quaternion
+                        ############################################################################
 
-                        position_trajectory, orientation_trajectory = interpolateLinearTrajectory( robot.get_ee_pose()[0], robot.get_ee_pose()[1], target_position, target_orientation, 600)
+                        position_trajectory, orientation_trajectory = interpolateLinearTrajectory( robot.get_ee_pose()[0], robot.get_ee_pose()[1], target_position, target_orientation, 1000)
                         event = events["GRASP_GENERATED"]
                         start_step = i + 100
 
@@ -188,7 +191,7 @@ def run_exp(config: Dict[str, Any]):
                         if finished:
                             event = events["GRASP_SUCCESS"]
                             
-                            #generate lift trajectory
+                            # Compute grasp position
                             target_position =  obj_position_guess + 0.05 * grasp_direction
                             position_trajectory, orientation_trajectory = interpolateLinearTrajectory( robot.get_ee_pose()[0], robot.get_ee_pose()[1], target_position, target_orientation, 400)
                             start_step = i + 100
