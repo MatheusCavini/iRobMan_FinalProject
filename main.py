@@ -24,20 +24,20 @@ def run_exp(config: Dict[str, Any]):
     object_root_path = ycb_objects.getDataPath()
     files = glob.glob(os.path.join(object_root_path, "Ycb*"))
     obj_names = [file.split('/')[-1] for file in files]
+    
 
     ###[MC: 2025-03-06] To get a random object each time
     #random.shuffle(obj_names)
     #####################################################
 
     sim = Simulation(config)
-    controle = True
+    
 
     for obj_name in obj_names:
-        for tstep in range(1):
-            if controle:
-                controle = False
-                continue
-            
+        #if obj_name != 'c:\\users\\danie\\teste\\pybullet-object-models\\pybullet_object_models\\ycb_objects\\YcbGelatinBox':
+        #    continue
+      
+        for tstep in range(10):
             sim.reset(obj_name)
             print((f"Object: {obj_name}, Timestep: {tstep},"
                    f" pose: {sim.get_ground_tuth_position_object}"))
@@ -87,7 +87,7 @@ def run_exp(config: Dict[str, Any]):
             ###########################################################
            
            
-            for i in range(10000):
+            for i in range(2400):
                 sim.step()
     
                 
@@ -143,7 +143,10 @@ def run_exp(config: Dict[str, Any]):
                         real_depth_static = real_depth(depth_static, near, far)
                         obj_position_guess = point_3D_estimator(obj_2D_info, real_depth_static, sim.projection_matrix, sim.stat_viewMat)
                         ############################################################################
-                        target_position = obj_position_guess + [-0.3, 0.1, 0.1]
+                        if compare_arrays(obj_position_guess, [0, 0, 0]):
+                            obj_position_guess = np.array([-0.1, -0.5, 1.4])
+                        target_position = obj_position_guess + np.array([-0.3, 0.1, 0.1])
+                        
                         target_orientation = axis_angle_to_quaternion(axis0, angle0)
                         position_trajectory, orientation_trajectory = interpolateLinearTrajectory( robot.get_ee_pose()[0], robot.get_ee_pose()[1], target_position, target_orientation, 400)
                         event = events["OBJECT_POSITION_ESTIMATED"]
@@ -159,13 +162,7 @@ def run_exp(config: Dict[str, Any]):
 
                     #STEP 4: GENERATE GRASP USING END-EFFECTOR CAMERA
                     if state == states["GENERATING_GRASP"]:
-                        '''#[DK:2025-02-26] Object depth detection
-                        axis2 = [0, 0, 1]
-                        angle2 = np.deg2rad(180 - grasping_generator( (seg_ee*60).astype(np.uint8))[0])
-                        target_position = robot.get_ee_pose()[0] - [0, 0, np.min(depth_real_ee)+depth_threshhold]
-                        target_orientation = concatenate_quaternions(axis_angle_to_quaternion(axis0, angle0), axis_angle_to_quaternion(axis2, angle2))'''
-
-                        obj_position_guess, obj_orientation_guess_Quaternion = grasp_point_cloud_2((seg_static*60).astype(np.uint8), depth_real_static, sim.projection_matrix, sim.stat_viewMat)
+                        obj_position_guess, obj_orientation_guess_Quaternion = grasp_point_cloud_2((seg_static*60).astype(np.uint8), depth_real_static, sim.projection_matrix, sim.stat_viewMat, robot)
                         #obj_orientation_guess_R_matrix = [[-0.19863986,  0.28762546, -0.93691718],[-0.97854971, -0.00493447,  0.20595171],[ 0.05461377,  0.95773026,  0.28243599]]
                         #obj_orientation_guess = R_matrix_2_axisangle(obj_orientation_guess_R_matrix)
                         #obj_orientation_guess = [[-1.0, 0.0, 0], np.pi/4]
@@ -229,7 +226,7 @@ def run_exp(config: Dict[str, Any]):
                     event = events["NONE"]
                     print(f"[{i}] State: {state}")
                     print(f"[{i}] Event: {event}")
-                ###########################################################
+                ###########################################################'''
                        
     sim.close()
 

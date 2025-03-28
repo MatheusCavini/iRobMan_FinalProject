@@ -1,16 +1,14 @@
 import numpy as np
-from giga.simulation import ClutterRemovalSim
 from giga.perception import *
 from giga.utils.transform import Rotation, Transform
-from giga.utils.implicit import get_mesh_pose_list_from_world, as_mesh#, get_scene_from_mesh_pose_list
-from giga.utils.misc import apply_noise
+from giga.utils.implicit import as_mesh#, get_scene_from_mesh_pose_list
 from giga.grasp_sampler import GpgGraspSamplerPcl
 import open3d as o3d
-from open3d.visualization import draw_plotly
+from scipy.spatial.transform import Rotation as R
 import trimesh
-import matplotlib.pyplot as plt
 import cv2
 from typing import Any, Sequence
+from src.robot import Robot
 
 # Fuction used to visualize multiple objects
 def visualize_3d_objs(objs: Sequence[Any]) -> None:
@@ -215,15 +213,28 @@ def grasp2mesh(grasp, score, finger_depth=0.05):
     scene.visual.face_colors = colors
     return scene
 
-def verify_table_collision(points, z_plane = 1.25):
-    min_value = np.min(points[:, 2])
-    if min_value < z_plane:
-        return True
-    return False
 
+def sort_orientations_by_verticality(poses):
+    """
+    Sorts a list of [[position], [quaternion]] by how vertical the orientation is.
 
+    Parameters:
+        poses (list): List of [[x, y, z], [qx, qy, qz, qw]]
 
-def grasp_point_cloud_2(grayscale, depth, projection_matrix, stat_viewMat):
+    Returns:
+        List of sorted poses (more vertical first)
+    """
+    
+    def vertical_score(pose):
+        quat = pose[1]  # get [qx, qy, qz, qw]
+        r = R.from_quat(quat)
+        z_axis = r.apply([0, 0, -1])  # get transformed z-axis
+        return z_axis[2]  # the vertical score
+    
+    # Sort in descending order
+    return sorted(poses, key=vertical_score, reverse=True)
+
+def grasp_point_cloud_2(grayscale, depth, projection_matrix, stat_viewMat, Robot):
     if True:
         center_x, center_y = center_object(grayscale)
 
@@ -238,7 +249,7 @@ def grasp_point_cloud_2(grayscale, depth, projection_matrix, stat_viewMat):
 
         # Grasp Sampling using GPD
         num_parallel_workers = 2
-        num_grasps = 15
+        num_grasps = 30
 
         sampler = GpgGraspSamplerPcl(0.05-0.0075)
         safety_dist_above_table = 0.005  # Adjusted safety distance
@@ -251,17 +262,26 @@ def grasp_point_cloud_2(grayscale, depth, projection_matrix, stat_viewMat):
         grasp_mesh_list = [grasp2mesh(g, score=1) for g in grasps]
         for grasp_mesh, grasp_pos, grasp_quat in zip(grasp_mesh_list, grasps_pos, grasps_quat):
             points, _ = trimesh.sample.sample_surface(as_mesh(grasp_mesh), 5000)
+           
+            pcd_grasp = o3d.geometry.PointCloud()
+            pcd_grasp.points = o3d.utility.Vector3dVector(points)
 
-            colision = verify_table_collision(points)
-            colision = False
+            print(Robot.is_pose_reachable(grasp_pos, grasp_quat))
 
-            if not colision:
-                pcd_grasp = o3d.geometry.PointCloud()
-                pcd_grasp.points = o3d.utility.Vector3dVector(points)
-                vis_meshes.append(pcd_grasp)
-                available_grasps.append([grasp_pos + np.array([0, 0, 1.25]), grasp_quat])
+            #if Robot.is_pose_reachable(grasp_pos, grasp_quat):
+            #    pcd_grasp.paint_uniform_color([0, 1, 0])
 
-        visualize_3d_objs(vis_meshes)
+            vis_meshes.append(pcd_grasp)
+            available_grasps.append([grasp_pos + np.array([0, 0, 1.25]), grasp_quat])
+
+
+
+        available_grasps = sort_orientations_by_verticality(available_grasps)
+
+        
         print(available_grasps)
         print(available_grasps[0])
+
+        visualize_3d_objs(vis_meshes)
+        
         return available_grasps[0]
