@@ -34,7 +34,7 @@ def moveAlongTrajectory(robot, positions, orientations, step_start, current_step
     if current_step > step_start and current_step < step_start+steps_duration:
         robot.move_to_pose(positions[current_step-step_start], orientations[current_step-step_start])
     
-    if current_step == step_start + steps_duration:
+    if current_step >= step_start + steps_duration:
         return True
     else: 
         return False

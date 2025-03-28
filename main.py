@@ -27,7 +27,7 @@ def run_exp(config: Dict[str, Any]):
     
 
     ###[MC: 2025-03-06] To get a random object each time
-    #random.shuffle(obj_names)
+    random.shuffle(obj_names)
     #####################################################
 
     sim = Simulation(config)
@@ -94,14 +94,14 @@ def run_exp(config: Dict[str, Any]):
                 # for getting renders
                 #[MC:2025-02-10] PERFORMANCE: change render FPS
                 if i%10 == 0: #Only get renders every 10 steps (240/10 = 24fps on image processing)
-                    rgb_ee, depth_ee, seg_ee = sim.get_ee_renders()
+                    #rgb_ee, depth_ee, seg_ee = sim.get_ee_renders()
                     rgb_static, depth_static, seg_static = sim.get_static_renders()
                
 
                 #[MC:2025-02-16] Testing obstacle detection and measuring
                 ###########################################################
                     depth_real_static = real_depth(depth_static, near, far)
-                    depth_real_ee = real_depth(depth_ee, near, far)
+                    #depth_real_ee = real_depth(depth_ee, near, far)
 
                     obstacles_2D_info = detect_obstacle_2D(rgb_static)
 
@@ -195,14 +195,17 @@ def run_exp(config: Dict[str, Any]):
                             target_position =  obj_position_guess + 0.05 * grasp_direction
                             position_trajectory, orientation_trajectory = interpolateLinearTrajectory( robot.get_ee_pose()[0], robot.get_ee_pose()[1], target_position, target_orientation, 400)
                             start_step = i + 100
+                            finished_step = 10000
                             
 
                     #STEP 6: LIFT OBJECT
                     if state == states["LIFTING"]:
                         finished = moveAlongTrajectory(robot, position_trajectory, orientation_trajectory, start_step, i)
-                        if finished:
+                        if finished and i > start_step + 500:
                             robot.close_gripper()
                             event = events["OBJECT_LIFTED"]
+                        
+                        
 
                     #STEP 7: GENERATE TRAJECTORY TO TARGET
                     if state == states["GENERATING_TRAJECTORY"]:
@@ -220,7 +223,7 @@ def run_exp(config: Dict[str, Any]):
                     #STEP 8: MOVE TO TARGET AND DROP OBJECT
                     if state == states["MOVING_TO_TARGET"]:
                         finished = moveAlongTrajectory(robot, position_trajectory, orientation_trajectory, start_step, i)
-                        if finished:
+                        if finished and i > start_step + 1100:
                             robot.open_gripper()
                             event = events["TARGET_REACHED"]
 
