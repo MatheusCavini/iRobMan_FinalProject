@@ -16,7 +16,6 @@ from src.obstacleDetection import *
 from src.stateMachine import states, events, transitions
 from src.grasp_generator import *
 
-
 def run_exp(config: Dict[str, Any]):
     # Example Experiment Runner File
     print("Simulation Start:")
@@ -110,6 +109,9 @@ def run_exp(config: Dict[str, Any]):
                     obstacle1_measure = obstacle_3D_estimator(obstacles_2D_info, depth_real_static, sim.projection_matrix, sim.stat_viewMat, 1)
                     obs_position_guess[0] = kf0.update(obstacle0_measure)
                     obs_position_guess[1] = kf1.update(obstacle1_measure)
+
+                    
+
                 
 
 
@@ -121,7 +123,6 @@ def run_exp(config: Dict[str, Any]):
                 print((f"[{i}] Goal Obj Pos-Diff: "
                        f"{sim.check_goal_obj_pos(goal_guess)}"))
                 print(f"[{i}] Goal Satisfied: {sim.check_goal()}")
-
 
 
                 ##[MC:2025-03-06] SIMULATION LOOP
@@ -161,7 +162,7 @@ def run_exp(config: Dict[str, Any]):
                             event = events["REACHED_OBJECT"]
                             robot.open_gripper()
 
-                    #STEP 4: GENERATE GRASP USING END-EFFECTOR CAMERA
+                    #STEP 4: GENERATE GRASP 
                     if state == states["GENERATING_GRASP"]:
 
                         #[DK:2025-03-25] Grasping generation
@@ -195,7 +196,6 @@ def run_exp(config: Dict[str, Any]):
                             target_position =  obj_position_guess + 0.05 * grasp_direction
                             position_trajectory, orientation_trajectory = interpolateLinearTrajectory( robot.get_ee_pose()[0], robot.get_ee_pose()[1], target_position, target_orientation, 400)
                             start_step = i + 100
-                            finished_step = 10000
                             
 
                     #STEP 6: LIFT OBJECT
@@ -203,21 +203,39 @@ def run_exp(config: Dict[str, Any]):
                         finished = moveAlongTrajectory(robot, position_trajectory, orientation_trajectory, start_step, i)
                         if finished and i > start_step + 500:
                             robot.close_gripper()
+                        if finished and i > start_step + 600:
                             event = events["OBJECT_LIFTED"]
                         
                         
 
                     #STEP 7: GENERATE TRAJECTORY TO TARGET
                     if state == states["GENERATING_TRAJECTORY"]:
-                        waypoint_position = np.array([0.5,0,1.5])
+
                         waypoint_orientation = concatenate_quaternions(axis_angle_to_quaternion(axis0, angle0), axis_angle_to_quaternion([0,0,1], +np.pi/2))
                         
                         target_position = np.array(config["world_settings"]["default_goal_pos"]) + np.array([-0.10, -0.10, 0.35])
                         target_orientation = concatenate_quaternions(waypoint_orientation, axis_angle_to_quaternion([1,0,0], +np.pi/2))
                         
-                        position_trajectory, orientation_trajectory = interpolateTrajectoryWaypoins([robot.get_ee_pose()[0], waypoint_position, target_position], [robot.get_ee_pose()[1], waypoint_orientation, target_orientation], 1000)
                         
-                        event = events["TRAJECTORY_GENERATED"]
+                        
+                        bounds = [[-1.5, 1.5], [-1.5, 1.5], [0.5,2 ]]  # Define 3D workspace limit
+
+                        rrt_star = RRTStar3D(start=robot.get_ee_pose()[0], goal=target_position, world_bounds=bounds)
+                        
+                        path = rrt_star.run(num_points=1000)
+                        
+                        # Visualize the trajectory in PyBullet
+                        
+                        
+                       
+                        if len(path) > 10:
+                            _, orientation_trajectory = interpolateLinearTrajectory( robot.get_ee_pose()[0], robot.get_ee_pose()[1], target_position, target_orientation, 1000)
+                        
+                            position_trajectory = path
+
+                            for j in range(len(path) - 1):
+                                p.addUserDebugLine(path[j], path[j+1], lineColorRGB=[1, 0, 0], lifeTime=0)
+                            event = events["TRAJECTORY_GENERATED"]
                         start_step = i + 100
 
                     #STEP 8: MOVE TO TARGET AND DROP OBJECT

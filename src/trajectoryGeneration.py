@@ -41,3 +41,197 @@ def moveAlongTrajectory(robot, positions, orientations, step_start, current_step
 
 
 ###########################################################
+
+
+import numpy as np
+import random
+from scipy.spatial import KDTree
+
+class Node:
+    def __init__(self, position, parent=None):
+        self.position = np.array(position)
+        self.parent = parent
+        self.cost = 0
+
+class RRTStar3D:
+    def __init__(self, start, goal, world_bounds, max_iter=1000, step_size=0.01, search_radius=0.5, goal_sample_rate=0.1):
+        self.start = Node(start)
+        self.goal = Node(goal)
+        self.world_bounds = world_bounds
+        self.max_iter = max_iter
+        self.step_size = step_size
+        self.search_radius = search_radius
+        self.goal_sample_rate = goal_sample_rate
+        self.tree = [self.start]
+
+    def sample_point(self):
+        if random.random() < self.goal_sample_rate:
+            return self.goal.position
+        return np.array([random.uniform(b[0], b[1]) for b in self.world_bounds])
+
+    def nearest_node(self, sampled_point):
+        tree_points = np.array([node.position for node in self.tree])
+        kd_tree = KDTree(tree_points)
+        _, idx = kd_tree.query(sampled_point)
+        return self.tree[idx]
+
+    def steer(self, nearest, sampled):
+        direction = sampled - nearest.position
+        norm = np.linalg.norm(direction)
+        if norm == 0:
+            return None
+        direction = direction / norm
+        new_position = nearest.position + self.step_size * direction
+        return Node(new_position, parent=nearest)
+
+    def is_collision_free(self, start, end):
+        ray_test = p.rayTest(start, end)
+        return ray_test[0][0] == -1
+
+    def update_descendant_costs(self, node):
+        for child in self.tree:
+            if child.parent == node:
+                child.cost = node.cost + np.linalg.norm(child.position - node.position)
+                self.update_descendant_costs(child)
+
+    def rewire(self, new_node):
+        for node in self.tree:
+            distance = np.linalg.norm(node.position - new_node.position)
+            if node == new_node or distance > self.search_radius:
+                continue
+            new_cost = new_node.cost + distance
+            if new_cost < node.cost and self.is_collision_free(new_node.position, node.position):
+                node.parent = new_node
+                node.cost = new_cost
+                self.update_descendant_costs(node)
+
+    def try_connect_goal(self, new_node):
+        distance = np.linalg.norm(new_node.position - self.goal.position)
+        if distance < self.search_radius and self.is_collision_free(new_node.position, self.goal.position):
+            new_cost = new_node.cost + distance
+            if self.goal.parent is None or new_cost < self.goal.cost:
+                self.goal.parent = new_node
+                self.goal.cost = new_cost
+                return True
+        return False
+
+    def run(self, num_points):
+        goal_connected = False
+
+        for _ in range(self.max_iter):
+            sampled_point = self.sample_point()
+            nearest = self.nearest_node(sampled_point)
+            new_node = self.steer(nearest, sampled_point)
+            if new_node is None:
+                continue
+
+            if self.is_collision_free(nearest.position, new_node.position):
+                new_node.cost = nearest.cost + np.linalg.norm(new_node.position - nearest.position)
+                self.tree.append(new_node)
+                self.rewire(new_node)
+
+                if self.try_connect_goal(new_node):
+                    goal_connected = True
+
+        if goal_connected:
+            self.tree.append(self.goal)
+            path = self.extract_path()
+            path = self.shortcut_path(path)
+            return self.interpolate_path(path, num_points=num_points)
+        else:
+            return None  # No path found
+
+    def extract_path(self):
+        path = []
+        node = self.goal
+        while node is not None:
+            path.append(node.position)
+            node = node.parent
+        return path[::-1]
+
+    def shortcut_path(self, path):
+        if len(path) < 3:
+            return path
+        new_path = [path[0]]
+        i = 0
+        while i < len(path) - 1:
+            j = len(path) - 1
+            while j > i + 1:
+                if self.is_collision_free(path[i], path[j]):
+                    break
+                j -= 1
+            new_path.append(path[j])
+            i = j
+        return new_path
+
+    def interpolate_path(self, path, num_points=100):
+        if len(path) < 2:
+            return path
+
+        total_length = sum(np.linalg.norm(np.array(path[i + 1]) - np.array(path[i])) for i in range(len(path) - 1))
+        distances = [0]
+        for i in range(1, len(path)):
+            distances.append(distances[-1] + np.linalg.norm(np.array(path[i]) - np.array(path[i - 1])))
+
+        interpolated_path = []
+        target_distances = np.linspace(0, total_length, num_points)
+
+        path_idx = 0
+        for target_d in target_distances:
+            while path_idx < len(distances) - 1 and distances[path_idx + 1] < target_d:
+                path_idx += 1
+            p1, p2 = np.array(path[path_idx]), np.array(path[path_idx + 1])
+            segment_length = distances[path_idx + 1] - distances[path_idx]
+            if segment_length == 0:
+                interpolated_path.append(p1.tolist())
+            else:
+                alpha = (target_d - distances[path_idx]) / segment_length
+                new_point = (p1 + alpha * (p2 - p1)).tolist()
+                interpolated_path.append(new_point)
+
+        return interpolated_path
+    
+
+
+def apply_potential_field_3d(path, obstacles, repulsive_gain=1.0, influence_radius=2.0, attractive_gain=0.1, iterations=10):
+    """
+    Applies potential field smoothing to a 3D trajectory in the presence of moving obstacles.
+    
+    Parameters:
+    - path: list of [x, y, z] positions (original trajectory).
+    - obstacles: list of dicts with 'position': [x, y, z] and 'radius'.
+    - repulsive_gain: strength of repulsion from obstacles.
+    - influence_radius: distance within which obstacles influence the path.
+    - attractive_gain: strength of attraction back to original path.
+    - iterations: how many times to apply the potential field.
+
+    Returns:
+    - updated_path: new list of [x, y, z] points adjusted to avoid obstacles.
+    """
+    path = np.array(path)
+    original_path = np.copy(path)
+
+    for _ in range(iterations):
+        for i in range(1, len(path) - 1):  # skip start and goal
+            total_force = np.zeros(3)
+
+            # Repulsive force from each obstacle
+            for obs_pos in obstacles:
+                
+
+                diff = path[i] - obs_pos
+                dist = np.linalg.norm(diff)
+                if dist < influence_radius and dist > 1e-6:
+                    direction = diff / dist
+                    force_mag = repulsive_gain * (1.0 / dist - 1.0 / influence_radius) / (dist ** 2)
+                    repulsive_force = force_mag * direction
+                    total_force += repulsive_force
+
+            # Attractive force toward the original path
+            attraction = attractive_gain * (original_path[i] - path[i])
+            total_force += attraction
+
+            # Update position
+            path[i] += total_force
+
+    return path.tolist()

@@ -138,7 +138,7 @@ class Robot:
 
         #Calculate the pseudo-inverse of the Jacobian
 
-        damping_factor = 0.05 #Use damped inverse model to avoid singularities
+        damping_factor = 0.1 #Use damped inverse model to avoid singularities
         identity_matrix = np.eye(jacobian.shape[0])
         jacobian_pseudo_inv = jacobian.T @ np.linalg.inv(jacobian @ jacobian.T + damping_factor**2 * identity_matrix)
 
