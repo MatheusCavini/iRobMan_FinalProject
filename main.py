@@ -180,29 +180,40 @@ def run_exp(config: Dict[str, Any]):
                         start_step = i + 100
 
                     
-                    #STEP 5: GRASP OBJECT
-                    if state == states["GRASPING"]:
+                    #STEP 5: PRE-GRASP OBJECT
+                    if state == states["PRE_GRASPING"]:
                         finished = moveAlongTrajectory(robot, position_trajectory, orientation_trajectory, start_step, i)
                         if finished:
-                            event = events["GRASP_SUCCESS"]
+                            event = events["PREGRASP_SUCCESS"]
                             
                             # Compute grasp position
                             target_position =  obj_position_guess + 0.05 * grasp_direction
                             position_trajectory, orientation_trajectory = interpolateLinearTrajectory( robot.get_ee_pose()[0], robot.get_ee_pose()[1], target_position, target_orientation, 400)
                             start_step = i + 100
                             
+                   
 
-                    #STEP 6: LIFT OBJECT
-                    if state == states["LIFTING"]:
+                    #STEP 6: GRASP OBJECT
+                    if state == states["GRASPING"]:
                         finished = moveAlongTrajectory(robot, position_trajectory, orientation_trajectory, start_step, i)
                         if finished and i > start_step + 500:
                             robot.close_gripper()
                         if finished and i > start_step + 600:
+                            event = events["GRASP_SUCCESS"]
+                            target_position = robot.get_ee_pose()[0] + np.array([0, 0, 0.15])
+                            position_trajectory, orientation_trajectory = interpolateLinearTrajectory( robot.get_ee_pose()[0], robot.get_ee_pose()[1], target_position, target_orientation, 400)
+                            start_step = i + 100
+
+                    #STEP 7: LIFT OBJECT
+                    if state == states["LIFTING"]:
+                        finished = moveAlongTrajectory(robot, position_trajectory, orientation_trajectory, start_step, i)
+                        if finished:
                             event = events["OBJECT_LIFTED"]
+
                         
                         
 
-                    #STEP 7: GENERATE TRAJECTORY TO TARGET
+                    #STEP 8: GENERATE TRAJECTORY TO TARGET
                     if state == states["GENERATING_TRAJECTORY"]:
                         target_position = np.array(config["world_settings"]["default_goal_pos"]) + np.array([-0.10, -0.10, 0.35])
                         waypoint_orientation = concatenate_quaternions(axis_angle_to_quaternion(axis0, angle0), axis_angle_to_quaternion([0,0,1], +np.pi/2))
@@ -225,7 +236,7 @@ def run_exp(config: Dict[str, Any]):
                             event = events["TRAJECTORY_GENERATED"]
                         start_step = i + 100
 
-                    #STEP 8: MOVE TO TARGET AND DROP OBJECT
+                    #STEP 9: MOVE TO TARGET AND DROP OBJECT
                     if state == states["MOVING_TO_TARGET"]:
                         finished = moveAlongTrajectory(robot, position_trajectory, orientation_trajectory, start_step, i)
                         if finished and i > start_step + 1100:
