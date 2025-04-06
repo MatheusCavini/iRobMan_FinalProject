@@ -8,7 +8,7 @@ from typing import Dict, Any
 
 from pybullet_object_models import ycb_objects  # type:ignore
 
-
+#Import modules from source
 from src.simulation import Simulation
 from src.utils import * 
 from src.trajectoryGeneration import *
@@ -26,7 +26,7 @@ def run_exp(config: Dict[str, Any]):
     
 
     ###[MC: 2025-03-06] To get a random object each time
-    random.shuffle(obj_names)
+    #random.shuffle(obj_names)
     #####################################################
 
     sim = Simulation(config)
@@ -60,15 +60,9 @@ def run_exp(config: Dict[str, Any]):
             # Axis and angle corresponding to the neutral orientation
             axis0 = [0,1,0] 
             angle0 =  np.pi
-
-            
             robot = sim.get_robot()
             near = config['world_settings']['camera']['near']
             far = config['world_settings']['camera']['far']
-            depth_threshhold = 0.025
-            #grabing_distance = True
-            #global_object_position = False
-
 
             #Related to state machine
             state = states["INIT"]
@@ -93,14 +87,13 @@ def run_exp(config: Dict[str, Any]):
                 # for getting renders
                 #[MC:2025-02-10] PERFORMANCE: change render FPS
                 if i%10 == 0: #Only get renders every 10 steps (240/10 = 24fps on image processing)
-                    #rgb_ee, depth_ee, seg_ee = sim.get_ee_renders()
+                    #rgb_ee, depth_ee, seg_ee = sim.get_ee_renders() ##UNUSED
                     rgb_static, depth_static, seg_static = sim.get_static_renders()
                
 
                 #[MC:2025-02-16] Testing obstacle detection and measuring
                 ###########################################################
                     depth_real_static = real_depth(depth_static, near, far)
-                    #depth_real_ee = real_depth(depth_ee, near, far)
 
                     obstacles_2D_info = detect_obstacle_2D(rgb_static)
 
@@ -150,6 +143,7 @@ def run_exp(config: Dict[str, Any]):
                         ############################################################################
                         
                         target_orientation = axis_angle_to_quaternion(axis0, angle0)
+                        goal_guess = np.hstack((target_position, target_orientation))
                         position_trajectory, orientation_trajectory = interpolateLinearTrajectory( robot.get_ee_pose()[0], robot.get_ee_pose()[1], target_position, target_orientation, 400)
                         event = events["OBJECT_POSITION_ESTIMATED"]
                         start_step = i + 100
@@ -210,13 +204,9 @@ def run_exp(config: Dict[str, Any]):
 
                     #STEP 7: GENERATE TRAJECTORY TO TARGET
                     if state == states["GENERATING_TRAJECTORY"]:
-
-                        waypoint_orientation = concatenate_quaternions(axis_angle_to_quaternion(axis0, angle0), axis_angle_to_quaternion([0,0,1], +np.pi/2))
-                        
                         target_position = np.array(config["world_settings"]["default_goal_pos"]) + np.array([-0.10, -0.10, 0.35])
+                        waypoint_orientation = concatenate_quaternions(axis_angle_to_quaternion(axis0, angle0), axis_angle_to_quaternion([0,0,1], +np.pi/2))
                         target_orientation = concatenate_quaternions(waypoint_orientation, axis_angle_to_quaternion([1,0,0], +np.pi/2))
-                        
-                        
                         
                         bounds = [[-1.5, 1.5], [-1.5, 1.5], [0.5,2 ]]  # Define 3D workspace limit
 
@@ -225,9 +215,6 @@ def run_exp(config: Dict[str, Any]):
                         path = rrt_star.run(num_points=1000)
                         
                         # Visualize the trajectory in PyBullet
-                        
-                        
-                       
                         if len(path) > 10:
                             _, orientation_trajectory = interpolateLinearTrajectory( robot.get_ee_pose()[0], robot.get_ee_pose()[1], target_position, target_orientation, 1000)
                         

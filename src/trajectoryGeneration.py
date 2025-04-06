@@ -43,6 +43,9 @@ def moveAlongTrajectory(robot, positions, orientations, step_start, current_step
 ###########################################################
 
 
+#[MC:2025-03-27] Implementation of the RRT* algorithm for 3D path planning
+###########################################################
+
 import numpy as np
 import random
 from scipy.spatial import KDTree
@@ -191,47 +194,3 @@ class RRTStar3D:
 
         return interpolated_path
     
-
-
-def apply_potential_field_3d(path, obstacles, repulsive_gain=1.0, influence_radius=2.0, attractive_gain=0.1, iterations=10):
-    """
-    Applies potential field smoothing to a 3D trajectory in the presence of moving obstacles.
-    
-    Parameters:
-    - path: list of [x, y, z] positions (original trajectory).
-    - obstacles: list of dicts with 'position': [x, y, z] and 'radius'.
-    - repulsive_gain: strength of repulsion from obstacles.
-    - influence_radius: distance within which obstacles influence the path.
-    - attractive_gain: strength of attraction back to original path.
-    - iterations: how many times to apply the potential field.
-
-    Returns:
-    - updated_path: new list of [x, y, z] points adjusted to avoid obstacles.
-    """
-    path = np.array(path)
-    original_path = np.copy(path)
-
-    for _ in range(iterations):
-        for i in range(1, len(path) - 1):  # skip start and goal
-            total_force = np.zeros(3)
-
-            # Repulsive force from each obstacle
-            for obs_pos in obstacles:
-                
-
-                diff = path[i] - obs_pos
-                dist = np.linalg.norm(diff)
-                if dist < influence_radius and dist > 1e-6:
-                    direction = diff / dist
-                    force_mag = repulsive_gain * (1.0 / dist - 1.0 / influence_radius) / (dist ** 2)
-                    repulsive_force = force_mag * direction
-                    total_force += repulsive_force
-
-            # Attractive force toward the original path
-            attraction = attractive_gain * (original_path[i] - path[i])
-            total_force += attraction
-
-            # Update position
-            path[i] += total_force
-
-    return path.tolist()

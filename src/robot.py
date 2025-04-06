@@ -176,29 +176,3 @@ class Robot:
             controlMode=p.POSITION_CONTROL,
             targetPositions=[0.00, 0.00],
         )
-
-
-
-
-
-
-
-    def is_pose_reachable(self, target_pos, target_ori):
-        # Tentar resolver a cinemática inversa diretamente com PyBullet
-        joint_positions = p.calculateInverseKinematics(
-            self.id, 
-            self.ee_idx, 
-            target_pos, 
-            target_ori
-        )
-        
-        # Verificar se a solução foi encontrada
-        if joint_positions is None:
-            return False
-        
-        # Verificar se os ângulos das articulações estão dentro dos limites
-        for i, theta in enumerate(joint_positions[:len(self.arm_idx)]):
-            if theta < self.lower_limits[i] or theta > self.upper_limits[i]:
-                return False
-        
-        return True

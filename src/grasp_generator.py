@@ -271,7 +271,7 @@ def grasp_point_cloud_2(grayscale, depth, projection_matrix, stat_viewMat, Robot
 
         available_grasps = sort_orientations_by_verticality(available_grasps) # Sort the grasps by verticality
 
-        visualize_3d_objs(vis_meshes) # Visualize the point cloud and grasps
+        #visualize_3d_objs(vis_meshes) # Visualize the point cloud and grasps
 
         #If no available grasps were found, the reconstruction might have been bad. Run the function again ajusting the recontruction
         if len(available_grasps) == 0:
