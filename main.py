@@ -36,7 +36,7 @@ def run_exp(config: Dict[str, Any]):
         #if obj_name != 'c:\\users\\danie\\teste\\pybullet-object-models\\pybullet_object_models\\ycb_objects\\YcbPowerDrill':
         #    continue
       
-        for tstep in range(1):
+        for tstep in range(10):
             sim.reset(obj_name)
             print((f"Object: {obj_name}, Timestep: {tstep},"
                    f" pose: {sim.get_ground_tuth_position_object}"))
@@ -80,7 +80,7 @@ def run_exp(config: Dict[str, Any]):
             ###########################################################
            
            
-            for i in range(5000):
+            for i in range(10000):
                 sim.step()
     
                 
