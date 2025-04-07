@@ -60,11 +60,16 @@ The project requires the following Python libraries:
 3. **Install Dependencies**:
    Manually install the dependencies:
    ```bash
-   pip install numpy pybullet pybullet_object_models open3d trimesh scipy yaml opencv-python filterpy giga
+   pip install numpy pybullet open3d trimesh scipy yaml opencv-python filterpy giga
    ```
 
 4. **Download YCB Object Models**:
-   The simulation uses YCB object models. Ensure the `pybullet_object_models` library is installed and the YCB dataset is downloaded. If not, follow the instructions [here](https://github.com/bulletphysics/bullet3/tree/master/data).
+   The simulation uses YCB object models. Ensure the `pybullet_object_models` library is installed and the YCB dataset is downloaded. If not, follow the instructions:
+
+   ```bash
+      git clone https://github.com/eleramp/pybullet-object-models.git # inside the irobman_project folder
+      pip install -e pybullet-object-models/
+   ```
 
 ---
 
